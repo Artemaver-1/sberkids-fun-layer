@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>СберKids · CDN слоя пасхалок</title>
+<style>
+  :root { --ink:#1a1a24; --muted:#6b6d78; --bg:#f2f2f7; --card:#fff; --accent:#8c73f2; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#f2f2f7; --muted:#a3a5b0; --bg:#14141c; --card:#1f1f2a; } }
+  body { margin:0; font:16px/1.5 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:720px; margin:0 auto; padding:32px 16px; }
+  h1 { font-size:28px; margin:0 0 8px; }
+  p { color:var(--muted); }
+  a.card { display:block; background:var(--card); border-radius:18px; padding:16px; margin:12px 0; color:inherit; text-decoration:none; }
+  code { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Слой пасхалок · CDN</h1>
+  <p>Статические конфиги и ресурсы. Приложение читает JSON, проверяет его и скачивает ресурсы с проверкой sha256. Правка файла здесь = новый контент без релиза.</p>
+  <a class="card" href="fun-layer/v1/config.json"><code>config.json</code> — осень, по умолчанию</a>
+  <a class="card" href="fun-layer/v1/config-winter.json"><code>config-winter.json</code> — снег вместо пузырей</a>
+  <a class="card" href="fun-layer/v1/config-party.json"><code>config-party.json</code> — золотые пузыри 50 %</a>
+  <a class="card" href="fun-layer/v1/config-off.json"><code>config-off.json</code> — рубильник</a>
+</main>
+</body>
+</html>

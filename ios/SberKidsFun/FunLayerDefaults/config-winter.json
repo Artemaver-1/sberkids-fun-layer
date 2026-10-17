@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "configId": "winter-2026",
+  "enabled": true,
+  "announcedTotal": 5,
+  "foundSound": "chime",
+  "texts": {
+    "toastTitle": "Пасхалка найдена! {n} из {total}",
+    "toastSubtitle": "Нажми, чтобы узнать секрет",
+    "sheetTitle": "Это пасхалка!",
+    "sheetIntro": "В СберKids спрятано {total} секретов. Исследуй приложение и найди их все!",
+    "nextHintTitle": "Где искать дальше?",
+    "moreHintButton": "Ещё подсказка",
+    "shareButton": "Похвастаться",
+    "closeButton": "Понятно",
+    "shareText": "У меня {n} из {total} секретов СберKids! Сможешь найти все?",
+    "allFoundTitle": "Все секреты найдены!",
+    "allFoundText": "Ты настоящий исследователь. Скоро здесь спрячутся новые пасхалки.",
+    "comingSoonText": "Ещё {left} секрета уже прячутся в приложении. Загляни сюда позже!"
+  },
+  "teaser": {
+    "enabled": true,
+    "screen": "main",
+    "eggId": "bubbles",
+    "delayMs": 5000,
+    "maxShows": 3,
+    "text": "Потряси — пойдёт снег!"
+  },
+  "eggs": [
+    {
+      "id": "bubbles",
+      "order": 1,
+      "title": "Снегопад",
+      "pictogram": "egg.snow",
+      "screen": "main",
+      "trigger": {
+        "type": "shake",
+        "threshold": 1.3,
+        "peaks": 3,
+        "windowMs": 1000
+      },
+      "cooldownMs": 3000,
+      "variants": [
+        {
+          "id": "snow",
+          "weight": 1,
+          "effect": {
+            "durationMs": 8000,
+            "interactSound": "pop",
+            "haptic": "light",
+            "layers": [
+              {
+                "type": "particles",
+                "asset": "snowflake",
+                "count": 32,
+                "sizeMin": 18,
+                "sizeMax": 48,
+                "speedMin": 50,
+                "speedMax": 120,
+                "direction": "down",
+                "wobble": 30,
+                "wobbleSpeed": 1.2,
+                "spin": 1.4,
+                "spawnMs": 3000,
+                "tapToPop": true
+              }
+            ]
+          }
+        }
+      ],
+      "hint": {
+        "riddle": "Снежинки просыпаются, когда телефон трясут! Встряхни его на главном экране.",
+        "help": "Открой «Главный» и потряси телефон три раза.",
+        "pictograms": [
+          "tab.main",
+          "gesture.shake"
+        ]
+      }
+    },
+    {
+      "id": "monkey",
+      "order": 2,
+      "title": "Обезьянка-паркурщик",
+      "pictogram": "egg.monkey",
+      "screen": "content",
+      "trigger": {
+        "type": "pullHold",
+        "distance": 90,
+        "holdMs": 1000
+      },
+      "cooldownMs": 5000,
+      "variants": [
+        {
+          "id": "parkour",
+          "weight": 1,
+          "effect": {
+            "durationMs": 4600,
+            "sound": "jungle",
+            "haptic": "medium",
+            "layers": [
+              {
+                "type": "lottie",
+                "asset": "monkey",
+                "speed": 1,
+                "placement": "fullscreen"
+              }
+            ]
+          }
+        }
+      ],
+      "hint": {
+        "riddle": "Кто-то голодный ищет банан там, где живут мультики. Потяни ленту вниз — и не отпускай!",
+        "help": "Открой «Контент». Потяни ленту вниз и держи, пока не досчитаешь до трёх.",
+        "pictograms": [
+          "tab.content",
+          "gesture.pullHold"
+        ]
+      }
+    },
+    {
+      "id": "ghosts",
+      "order": 3,
+      "title": "Снежные духи",
+      "pictogram": "egg.ghosts",
+      "screen": "profile",
+      "trigger": {
+        "type": "palm",
+        "minTouches": 3,
+        "minRadius": 30,
+        "holdMs": 1200,
+        "maxMovement": 70
+      },
+      "fallbackTrigger": {
+        "type": "faceDownFlip",
+        "downMs": 800
+      },
+      "cooldownMs": 5000,
+      "variants": [
+        {
+          "id": "friendly",
+          "weight": 1,
+          "effect": {
+            "durationMs": 8000,
+            "sound": "whoo",
+            "interactSound": "giggle",
+            "haptic": "medium",
+            "dim": {
+              "color": "#140F33",
+              "opacity": 0.3
+            },
+            "layers": [
+              {
+                "type": "fog",
+                "asset": "fog",
+                "colors": [
+                  "#9FD8FF",
+                  "#D6F1FF",
+                  "#7FB2FF"
+                ],
+                "opacity": 0.6,
+                "drift": 16,
+                "stars": 26
+              },
+              {
+                "type": "ghosts",
+                "count": 4,
+                "sizeMin": 74,
+                "sizeMax": 110,
+                "palette": [
+                  "#FFFFFF",
+                  "#E6F6FF",
+                  "#DDEBFF"
+                ],
+                "tapToVanish": true,
+                "followFinger": true
+              }
+            ]
+          }
+        }
+      ],
+      "hint": {
+        "riddle": "Призраки любят темноту и прячутся там, где живёт твоя аватарка. Накрой экран ладошкой и подожди!",
+        "help": "Нажми на свою аватарку вверху. Накрой экран ладошкой, сосчитай до двух и убери руку.",
+        "pictograms": [
+          "screen.profile",
+          "gesture.palm"
+        ]
+      }
+    }
+  ],
+  "assets": {
+    "bubble": {
+      "url": "assets/bubble.png",
+      "sha256": "eb0cdc090291b4c12cb037dfda7fdb7e998e2cd62fa6b98cdff69123bace5297",
+      "bytes": 133963
+    },
+    "bubble_gold": {
+      "url": "assets/bubble_gold.png",
+      "sha256": "a1018703ec947e585ec38ee50ea38bc64fd5b48dea7e021ac097546fd5dedcaa",
+      "bytes": 111664
+    },
+    "fog": {
+      "url": "assets/fog.png",
+      "sha256": "d0b1374856910965aea7f4e3aa9c19500c98dfa703826786603652db12563452",
+      "bytes": 28125
+    },
+    "monkey": {
+      "url": "assets/monkey.json",
+      "sha256": "373f9cd73da750f85f5c55f8ec659fd146fc9c9ea278f0d8ce4a2741727cd24e",
+      "bytes": 177494
+    },
+    "pop": {
+      "url": "assets/pop.wav",
+      "sha256": "243bb559a91d05e4e689b79163b0959c04b3e8f8b8fd8a20ea7a9921df3b1ca1",
+      "bytes": 4894
+    },
+    "chime": {
+      "url": "assets/chime.wav",
+      "sha256": "1585f93107fe6ae1382870744c1843120a4a04d3689b5c58edf47b20d2a48dc3",
+      "bytes": 52964
+    },
+    "jungle": {
+      "url": "assets/jungle.wav",
+      "sha256": "6d986fcfbcf6c1dffd64b6faabfe28c4f8df90dbf4c33642aa41665cc82513ec",
+      "bytes": 123522
+    },
+    "whoo": {
+      "url": "assets/whoo.wav",
+      "sha256": "5d34f866428f57c660375333f7874fc35a8e44a1b569d4f106e9d80a297de358",
+      "bytes": 66194
+    },
+    "giggle": {
+      "url": "assets/giggle.wav",
+      "sha256": "e85d315a36b6ff1b357673f5ad5f554815fd0455f1565ba4ec30a5c979f514ba",
+      "bytes": 30912
+    },
+    "snowflake": {
+      "url": "assets/snowflake.png",
+      "sha256": "a1c8094b696cab31c511c7f54425b8384c0d814a00c60921941fa2724faa635b",
+      "bytes": 29601
+    }
+  }
+}

@@ -1,0 +1,9 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+ios/FunLayerCore/.build/
+ios/FunLayerCore/Package.resolved
+__pycache__/

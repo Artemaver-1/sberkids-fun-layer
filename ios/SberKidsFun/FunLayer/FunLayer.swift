@@ -1,0 +1,443 @@
+import FunLayerCore
+import SwiftUI
+import UIKit
+
+/// Хранилище прогресса на устройстве.
+final class UserDefaultsStore: KeyValueStore {
+    func data(forKey key: String) -> Data? { UserDefaults.standard.data(forKey: key) }
+    func set(_ data: Data?, forKey key: String) { UserDefaults.standard.set(data, forKey: key) }
+}
+
+struct ToastModel: Equatable {
+    let id = UUID()
+    let eggId: String
+    let title: String
+    let subtitle: String
+    let isFirstFind: Bool
+}
+
+struct SheetModel: Equatable {
+    let id = UUID()
+    let eggId: String
+}
+
+struct TeaserRun: Equatable {
+    let id = UUID()
+    let start: CFTimeInterval
+    let text: String
+    var poppedAt: CFTimeInterval?
+    var popPoint: CGPoint?
+}
+
+/// Точка входа слоя приколов. Интеграция в приложение — три вызова:
+/// `install(on:)` при старте, `setScreen(_:)` при смене экрана,
+/// `reportPull(distance:)` из списков с pull-to-refresh. Больше приложение ничего не знает.
+@MainActor
+final class FunLayer: ObservableObject {
+    static let shared = FunLayer()
+
+    /// Экраны приложения. Денежные помечены в ScreenPolicy.sensitive и закрыты для приколов в коде.
+    static let screens: Set<String> = ["main", "piggy", "tasks", "content", "profile", "transfer", "top_up", "debug"]
+    let policy = ScreenPolicy(knownScreens: FunLayer.screens)
+
+    @Published private(set) var config: FunConfig?
+    @Published private(set) var source: ConfigSource = .bundled("config")
+    @Published private(set) var warnings: [String] = []
+    @Published private(set) var effect: EffectRuntime?
+    @Published private(set) var toast: ToastModel?
+    @Published private(set) var sheet: SheetModel?
+    @Published private(set) var teaser: TeaserRun?
+    @Published private(set) var palmProgress: Double = 0
+    @Published private(set) var palmArmed = false
+    @Published private(set) var pullFraction: Double = 0
+    @Published private(set) var pullHold: Double = 0
+    @Published private(set) var currentScreen = "main"
+    @Published private(set) var isLoadingRemote = false
+    @Published var calibration: (touches: Int, radius: Double) = (0, 0)
+    @Published private(set) var progressVersion = 0
+
+    private(set) var engine: EggEngine?
+    let loader: ConfigLoader
+    private let progress = ProgressStore(store: UserDefaultsStore())
+    let sounds = SoundPlayer()
+    private let motion = MotionSensor()
+    private let palm = PalmGestureRecognizer()
+    private let pull = PullHoldDetector()
+    private var pullEnabled = false
+    private var overlay: OverlayWindow?
+    private var endTask: Task<Void, Never>?
+    private var toastTask: Task<Void, Never>?
+    private var teaserTask: Task<Void, Never>?
+    private var isActive = true
+    var calibrating = false { didSet { updateSensors() } }
+    private var palmEggActive = false
+    private var shakeEggActive = false
+    var toastFrame: CGRect = .zero
+
+    private init() {
+        loader = ConfigLoader(policy: ScreenPolicy(knownScreens: FunLayer.screens))
+    }
+
+    // MARK: - Установка
+
+    func install(on window: UIWindow) {
+        guard overlay == nil, let scene = window.windowScene else { return }
+
+        window.addGestureRecognizer(palm)
+        palm.isEnabled = false
+        palm.onProgress = { [weak self] p in self?.palmChanged(p) }
+        palm.onArmed = { [weak self] in self?.palmArmedNow() }
+        palm.onTriggered = { [weak self] in self?.palmTriggered() }
+        palm.onCancelled = { [weak self] in self?.palmReset() }
+        palm.onSample = { [weak self] count, radius, point in
+            guard let self else { return }
+            if self.calibrating { self.calibration = (count, radius) }
+            self.effect?.lookTarget = point
+        }
+
+        motion.onShake = { [weak self] in self?.trigger(.shake) }
+        motion.onFlip = { [weak self] in self?.trigger(.faceDownFlip) }
+
+        let o = OverlayWindow(windowScene: scene)
+        let host = UIHostingController(rootView: OverlayRootView().environmentObject(self))
+        host.view.backgroundColor = .clear
+        o.rootViewController = host
+        o.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 1)
+        o.backgroundColor = .clear
+        o.isHidden = false
+        overlay = o
+
+        apply(loader.loadOnLaunch())
+
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appActive(false) }
+        }
+        nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appActive(true) }
+        }
+
+        // Обновление с CDN — после того как главный экран уже показан: запуск не замедляем.
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if case .remote(let url) = self?.loader.savedSource { await self?.loadRemote(url) }
+        }
+    }
+
+    var overlaySize: CGSize { overlay?.bounds.size ?? UIScreen.main.bounds.size }
+    var safeInsets: UIEdgeInsets { overlay?.safeAreaInsets ?? .zero }
+
+    // MARK: - Конфиг
+
+    private func apply(_ loaded: ConfigLoader.Loaded) {
+        cancelEffect()
+        source = loaded.source
+        warnings = loaded.warnings
+        config = loaded.config
+        if let c = loaded.config {
+            if let engine { engine.update(config: c) } else { engine = EggEngine(config: c, progress: progress) }
+        } else {
+            engine = nil
+        }
+        toast = nil
+        sheet = nil
+        teaser = nil
+        updateSensors()
+        scheduleTeaser()
+    }
+
+    func useBundled(_ name: String) {
+        loader.savedSource = .bundled(name)
+        apply(loader.loadBundled(name))
+    }
+
+    func loadRemote(_ url: URL) async {
+        loader.savedSource = .remote(url)
+        isLoadingRemote = true
+        defer { isLoadingRemote = false }
+        guard let loaded = await loader.fetchRemote(url) else { return }
+        if loaded.config != nil || loaded.disabled {
+            apply(loaded)
+        } else {
+            warnings = loaded.warnings  // ошибка сети/валидации — остаёмся на прежнем конфиге
+        }
+    }
+
+    func resetProgress() {
+        progress.reset()
+        progressVersion += 1
+        scheduleTeaser()
+    }
+
+    // MARK: - Экраны и датчики
+
+    func setScreen(_ id: String) {
+        guard id != currentScreen else { return }
+        currentScreen = id
+        pull.reset()
+        pullFraction = 0
+        pullHold = 0
+        palmReset()
+        if ScreenPolicy.sensitive.contains(id) {
+            // поверх денег ничего не показываем — ни эффектов, ни тостов, ни шторки
+            cancelEffect()
+            toast = nil
+            sheet = nil
+        }
+        teaser = nil
+        updateSensors()
+        scheduleTeaser()
+    }
+
+    private func appActive(_ active: Bool) {
+        isActive = active
+        if !active {
+            cancelEffect()
+            teaser = nil
+        }
+        updateSensors()
+    }
+
+    private func updateSensors() {
+        guard let engine, isActive, effect == nil, sheet == nil, policy.allows(currentScreen) else {
+            motion.configure(shake: nil, flip: nil)
+            palm.isEnabled = calibrating || (effect != nil && palm.isEnabled)  // во время призраков глаза следят за пальцем
+            palmEggActive = false
+            shakeEggActive = false
+            pullEnabled = false
+            return
+        }
+        let t = engine.activeTriggers(on: currentScreen, now: Date())
+        motion.configure(shake: t[.shake], flip: t[.faceDownFlip])
+        shakeEggActive = t[.shake] != nil
+        if let p = t[.palm] { palm.detector.params = p.palm }
+        palmEggActive = t[.palm] != nil
+        palm.isEnabled = palmEggActive || calibrating
+        if let p = t[.pullHold] { pull.params = p.pull }
+        pullEnabled = t[.pullHold] != nil
+    }
+
+    /// Системный жест «встряхнуть» (UIKit). Дублирует CoreMotion: работает и в симуляторе
+    /// (Device → Shake), и как страховка на устройстве. Двойного запуска нет — движок блокирует.
+    func systemShake() {
+        guard shakeEggActive else { return }
+        trigger(.shake)
+    }
+
+    func reportPull(distance: Double) {
+        guard pullEnabled, effect == nil else { return }
+        let out = pull.feed(distance: distance, time: CACurrentMediaTime())
+        let fraction = pull.pullFraction(distance: distance)
+        if abs(fraction - pullFraction) > 0.01 || fraction == 0 { pullFraction = fraction }
+        switch out {
+        case .progress(let p):
+            pullHold = p
+        case .triggered:
+            pullHold = 0
+            pullFraction = 0
+            trigger(.pullHold)
+        case .idle:
+            pullHold = 0
+        }
+    }
+
+    private func palmChanged(_ p: Double) {
+        guard palmEggActive, effect == nil, sheet == nil else { return }
+        palmProgress = p
+    }
+
+    private func palmArmedNow() {
+        guard palmEggActive, effect == nil, sheet == nil else { return }
+        palmProgress = 1
+        palmArmed = true
+        Haptics.play(.medium)
+    }
+
+    private func palmTriggered() {
+        let armed = palmArmed
+        palmReset()
+        if armed { trigger(.palm) }
+    }
+
+    private func palmReset() {
+        palmProgress = 0
+        palmArmed = false
+    }
+
+    // MARK: - Эффект
+
+    func trigger(_ kind: TriggerKind) {
+        guard let engine, effect == nil, sheet == nil, isActive else { return }
+        guard let d = engine.handle(kind, on: currentScreen, now: Date()) else { return }
+        start(d)
+    }
+
+    /// Ручной запуск из меню отладки.
+    func forcePlay(_ eggId: String) {
+        guard let engine, effect == nil else { return }
+        sheet = nil
+        guard let d = engine.force(eggId: eggId, now: Date()) else { return }
+        start(d)
+    }
+
+    private func start(_ d: PlayDecision) {
+        guard let config else { return }
+        toast = nil
+        teaser = nil
+        teaserTask?.cancel()
+        let runtime = EffectRuntime(decision: d, size: overlaySize, config: config, assets: loader.assets)
+        withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
+        updateSensors()
+        if d.trigger == .palm { palm.isEnabled = true }
+        Haptics.play(d.variant.effect.haptic)
+        if let s = d.variant.effect.sound { sounds.play(loader.assets.localURL(forKey: s, in: config)) }
+
+        let duration = d.variant.effect.duration
+        endTask?.cancel()
+        endTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((duration - 0.45) * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.showToast(for: d)
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            self?.finishEffect()
+        }
+    }
+
+    private func finishEffect() {
+        effect = nil
+        engine?.effectFinished(now: Date())
+        updateSensors()
+    }
+
+    func cancelEffect() {
+        endTask?.cancel()
+        if effect != nil {
+            effect = nil
+            engine?.cancelEffect()
+            sounds.stopAll()
+        }
+    }
+
+    func tapEffect(at point: CGPoint) {
+        guard let effect, let config else { return }
+        if effect.tap(at: point) {
+            Haptics.tick()
+            if let s = effect.decision.variant.effect.interactSound {
+                sounds.play(loader.assets.localURL(forKey: s, in: config), volume: 0.6)
+            }
+        }
+    }
+
+    // MARK: - Тост и шторка
+
+    private func showToast(for d: PlayDecision) {
+        guard let config, !ScreenPolicy.sensitive.contains(currentScreen) else { return }
+        let values = ["n": "\(d.foundCount)", "total": "\(d.total)"]
+        let t = config.texts
+        let model = ToastModel(
+            eggId: d.egg.id,
+            title: Template.render(d.isFirstFind ? t.toastTitle : t.toastRepeatTitle, values),
+            subtitle: t.toastSubtitle,
+            isFirstFind: d.isFirstFind
+        )
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) { toast = model }
+        if d.isFirstFind {
+            Haptics.play(.success)
+            if let s = config.foundSound { sounds.play(loader.assets.localURL(forKey: s, in: config), volume: 0.7) }
+        }
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_500_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.25)) { self?.toast = nil }
+        }
+    }
+
+    func openSheet(from toast: ToastModel) {
+        toastTask?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { self.toast = nil }
+        cancelEffect()
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { sheet = SheetModel(eggId: toast.eggId) }
+        updateSensors()
+    }
+
+    func closeSheet() {
+        withAnimation(.easeInOut(duration: 0.25)) { sheet = nil }
+        updateSensors()
+    }
+
+    func dismissToast() {
+        withAnimation(.easeIn(duration: 0.2)) { toast = nil }
+    }
+
+    func revealMoreHint(_ eggId: String) {
+        engine?.revealMoreHint(for: eggId)
+        progressVersion += 1
+    }
+
+    func share() {
+        guard let engine, let config, let root = overlay?.rootViewController else { return }
+        let found = config.eggs.filter { engine.progress.isFound($0.id) }
+        let text = Template.render(config.texts.shareText, ["n": "\(found.count)", "total": "\(engine.total)"])
+        let image = ShareCard.render(found: found, total: engine.total, eggs: config.eggs, text: text)
+        let vc = UIActivityViewController(activityItems: [image, text], applicationActivities: nil)
+        vc.popoverPresentationController?.sourceView = root.view
+        root.present(vc, animated: true)
+    }
+
+    // MARK: - Тизер для самой первой пасхалки
+
+    private func scheduleTeaser() {
+        teaserTask?.cancel()
+        guard let engine, let t = engine.shouldShowTeaser(on: currentScreen) else { return }
+        let screen = currentScreen
+        teaserTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(t.delay * 1_000_000_000))
+            guard let self, !Task.isCancelled, self.currentScreen == screen,
+                  self.effect == nil, self.sheet == nil, self.isActive else { return }
+            self.engine?.teaserShown()
+            self.teaser = TeaserRun(start: CACurrentMediaTime(), text: t.text)
+            try? await Task.sleep(nanoseconds: 4_600_000_000)
+            guard !Task.isCancelled, self.teaser?.poppedAt == nil else { return }
+            self.teaser = nil
+        }
+    }
+
+    /// Траектория пузырька-тизера (нужна и для отрисовки, и для попадания пальцем).
+    func teaserPosition(at time: CFTimeInterval) -> CGPoint? {
+        guard let teaser, teaser.poppedAt == nil else { return nil }
+        let t = time - teaser.start
+        let s = overlaySize
+        return CGPoint(x: s.width * 0.74 + 14 * sin(t * 1.7),
+                       y: s.height * 0.36 - t * 34)
+    }
+
+    func popTeaser() {
+        guard var t = teaser, t.poppedAt == nil else { return }
+        let now = CACurrentMediaTime()
+        t.popPoint = teaserPosition(at: now)
+        t.poppedAt = now
+        teaser = t
+        Haptics.tick()
+        if let config, let url = loader.assets.localURL(forKey: "pop", in: config) { sounds.play(url) }
+        teaserTask?.cancel()
+        teaserTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation { self?.teaser = nil }
+        }
+    }
+
+    // MARK: - Попадание касаний в слой
+
+    /// Окно-оверлей забирает касание, только если палец попал в интерактивный элемент.
+    /// Всё остальное проходит насквозь в приложение.
+    func wantsTouch(at point: CGPoint) -> Bool {
+        if sheet != nil { return true }
+        if toast != nil, toastFrame.insetBy(dx: -6, dy: -6).contains(point) { return true }
+        if let p = teaserPosition(at: CACurrentMediaTime()), hypot(p.x - point.x, p.y - point.y) < 34 { return true }
+        if let effect, effect.hit(at: point) { return true }
+        return false
+    }
+}
