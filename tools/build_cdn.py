@@ -47,8 +47,16 @@ def main():
             f.write("\n")
         shutil.copy(path, os.path.join(BUNDLE, name))
         print(f"{name:20s} ресурсов {len(cfg.get('assets') or {}):2d}, {total / 1024:7.1f} КБ")
+    manifest = {}
     for rel in sorted(used):
-        shutil.copy(os.path.join(CDN, rel), os.path.join(BUNDLE, os.path.basename(rel)))
+        src = os.path.join(CDN, rel)
+        shutil.copy(src, os.path.join(BUNDLE, os.path.basename(rel)))
+        manifest[os.path.basename(rel)] = sha256(src)
+    # Xcode пережимает PNG при сборке — байты в .app отличаются от CDN.
+    # Поэтому хэши встроенных копий берём из манифеста, а не считаем по файлу.
+    with open(os.path.join(BUNDLE, "funlayer-manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+        f.write("\n")
     size = sum(os.path.getsize(os.path.join(BUNDLE, f)) for f in os.listdir(BUNDLE))
     print(f"встроено в приложение: {size / 1024:.1f} КБ (бюджет прироста сборки — 3 МБ)")
 

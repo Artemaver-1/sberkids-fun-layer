@@ -407,6 +407,22 @@ struct PictogramView: View {
                     .offset(x: 26 * (1 - cover), y: 4)
                     .opacity(0.3 + 0.7 * cover)
             }
+        case "gesture.faceDown":
+            // телефон переворачивается экраном вниз, «темнеет» и возвращается обратно
+            let cycle = t.truncatingRemainder(dividingBy: 2.8) / 2.8
+            let flip = cycle < 0.3 ? cycle / 0.3 : (cycle < 0.7 ? 1 : 1 - (cycle - 0.7) / 0.3)
+            let eased = (1 - cos(Double.pi * flip)) / 2
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(eased > 0.5 ? Color(red: 0.12, green: 0.1, blue: 0.25) : Color.white)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(FunStyle.ink, lineWidth: 2))
+                    .overlay(Image(systemName: eased > 0.5 ? "moon.stars.fill" : "sun.max.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(eased > 0.5 ? .yellow : .orange)
+                        .scaleEffect(x: 1, y: eased > 0.5 ? -1 : 1))
+                    .frame(width: 30, height: 46)
+                    .rotation3DEffect(.degrees(180 * eased), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
+            }
         default:
             Image(systemName: Self.symbol(key))
                 .font(.system(size: 28, weight: .semibold))
@@ -435,6 +451,7 @@ struct PictogramView: View {
         case "gesture.shake": return "Потряси телефон"
         case "gesture.pullHold": return "Потяни вниз и держи"
         case "gesture.palm": return "Накрой экран ладонью"
+        case "gesture.faceDown": return "Положи телефон экраном вниз"
         default: return ""
         }
     }

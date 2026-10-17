@@ -64,7 +64,8 @@
                 "spawnMs": 3000,
                 "tapToPop": true
               }
-            ]
+            ],
+            "sound": "bubbles"
           }
         }
       ],
@@ -85,8 +86,8 @@
       "screen": "content",
       "trigger": {
         "type": "pullHold",
-        "distance": 90,
-        "holdMs": 1000
+        "distance": 75,
+        "holdMs": 500
       },
       "cooldownMs": 5000,
       "variants": [
@@ -124,15 +125,15 @@
       "pictogram": "egg.ghosts",
       "screen": "profile",
       "trigger": {
-        "type": "palm",
-        "minTouches": 3,
-        "minRadius": 30,
-        "holdMs": 1200,
-        "maxMovement": 70
+        "type": "faceDownFlip",
+        "downMs": 700
       },
       "fallbackTrigger": {
-        "type": "faceDownFlip",
-        "downMs": 800
+        "type": "palm",
+        "minTouches": 3,
+        "minRadius": 24,
+        "holdMs": 900,
+        "maxMovement": 120
       },
       "cooldownMs": 5000,
       "variants": [
@@ -179,11 +180,11 @@
         }
       ],
       "hint": {
-        "riddle": "Призраки любят темноту и прячутся там, где живёт твоя аватарка. Накрой экран ладошкой и подожди!",
-        "help": "Нажми на свою аватарку вверху. Накрой экран ладошкой, сосчитай до двух и убери руку.",
+        "riddle": "Призраки боятся света! Там, где живёт твоя аватарка, спрячь телефон экраном вниз — и прислушайся.",
+        "help": "Нажми на свою аватарку. Положи телефон экраном вниз, подожди секунду и переверни обратно. А ещё можно накрыть экран ладошкой.",
         "pictograms": [
           "screen.profile",
-          "gesture.palm"
+          "gesture.faceDown"
         ]
       }
     }
@@ -191,13 +192,13 @@
   "assets": {
     "bubble": {
       "url": "assets/bubble.png",
-      "sha256": "eb0cdc090291b4c12cb037dfda7fdb7e998e2cd62fa6b98cdff69123bace5297",
-      "bytes": 133963
+      "sha256": "0c533ececa4ee4e1abf1fe6732e9a6d0b5be145307ad6eea5849647bcca92adc",
+      "bytes": 137670
     },
     "bubble_gold": {
       "url": "assets/bubble_gold.png",
-      "sha256": "a1018703ec947e585ec38ee50ea38bc64fd5b48dea7e021ac097546fd5dedcaa",
-      "bytes": 111664
+      "sha256": "db0f8b7187da16745bc9946ca432e534e853cc7dc5d996b60b942d86b2e4d1b2",
+      "bytes": 117369
     },
     "fog": {
       "url": "assets/fog.png",
@@ -206,38 +207,43 @@
     },
     "monkey": {
       "url": "assets/monkey.json",
-      "sha256": "373f9cd73da750f85f5c55f8ec659fd146fc9c9ea278f0d8ce4a2741727cd24e",
-      "bytes": 177494
+      "sha256": "62493673be12ca5faf9ac4eefe34fe271308acb6c29e071825d1928a9f63f3fd",
+      "bytes": 204702
     },
     "pop": {
       "url": "assets/pop.wav",
-      "sha256": "243bb559a91d05e4e689b79163b0959c04b3e8f8b8fd8a20ea7a9921df3b1ca1",
+      "sha256": "5099f9224bf0e31c78dc04c682a39f3724530edf4650eca756a0ea0115bf93f6",
       "bytes": 4894
     },
     "chime": {
       "url": "assets/chime.wav",
-      "sha256": "1585f93107fe6ae1382870744c1843120a4a04d3689b5c58edf47b20d2a48dc3",
+      "sha256": "25f0a18bedd33d129e9a7b4fb2267a77f3fc7833a35a4fa473856e7c348a85a4",
       "bytes": 52964
     },
     "jungle": {
       "url": "assets/jungle.wav",
-      "sha256": "6d986fcfbcf6c1dffd64b6faabfe28c4f8df90dbf4c33642aa41665cc82513ec",
-      "bytes": 123522
+      "sha256": "673c7a40af6313825bbda7e0f9c43aedfbd9e6725860336b9451a94e3cb11bc0",
+      "bytes": 202902
     },
     "whoo": {
       "url": "assets/whoo.wav",
-      "sha256": "5d34f866428f57c660375333f7874fc35a8e44a1b569d4f106e9d80a297de358",
-      "bytes": 66194
+      "sha256": "02d46eed06386df54e961e0426292ffff2f30e2744d32f56f0e4f4e3bdc1c34d",
+      "bytes": 101472
     },
     "giggle": {
       "url": "assets/giggle.wav",
-      "sha256": "e85d315a36b6ff1b357673f5ad5f554815fd0455f1565ba4ec30a5c979f514ba",
+      "sha256": "f0402f1536b1133b1585f99151b9cd9d437c78f46c474e444a0f36279fd9979d",
       "bytes": 30912
     },
     "snowflake": {
       "url": "assets/snowflake.png",
       "sha256": "a1c8094b696cab31c511c7f54425b8384c0d814a00c60921941fa2724faa635b",
       "bytes": 29601
+    },
+    "bubbles": {
+      "url": "assets/bubbles.wav",
+      "sha256": "2a56466c229cbc3f7685f4d1268ac50e30c5b8328a5c8fea94695f14487e0a51",
+      "bytes": 66194
     }
   }
 }

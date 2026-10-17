@@ -22,6 +22,8 @@ final class MotionSensor {
 
     var onShake: (() -> Void)?
     var onFlip: (() -> Void)?
+    var onFlipArmed: (() -> Void)?
+    private var flipArmed = false
 
     var isRunning: Bool { manager.isDeviceMotionActive }
 
@@ -56,7 +58,12 @@ final class MotionSensor {
 
     private func handle(_ m: MotionSample) {
         if shakeEnabled, shake.feed(x: m.ax, y: m.ay, z: m.az, time: m.time) { onShake?() }
-        if flipEnabled, flip.feed(gravityZ: m.gz, time: m.time) { onFlip?() }
+        if flipEnabled {
+            let fired = flip.feed(gravityZ: m.gz, time: m.time)
+            if flip.isArmed, !flipArmed { onFlipArmed?() }
+            flipArmed = flip.isArmed
+            if fired { onFlip?() }
+        }
     }
 }
 
@@ -66,6 +73,9 @@ final class MotionSensor {
 @MainActor
 final class PalmGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     let detector = PalmDetector()
+    /// Последние касания: пока ладонь лежит неподвижно, iOS не присылает событий —
+    /// прогресс досчитываем по таймеру (`tick()`), поэтому затемнение идёт плавно.
+    private var lastSamples: [TouchSample] = []
 
     var onProgress: ((Double) -> Void)?
     var onArmed: (() -> Void)?
@@ -93,8 +103,23 @@ final class PalmGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDeleg
 
     private func process(_ event: UIEvent) {
         let s = samples(event)
+        lastSamples = s
         onSample?(s.count, s.map(\.radius).max() ?? 0, s.first.map { CGPoint(x: $0.x, y: $0.y) })
-        let out = detector.feed(touches: s, time: event.timestamp)
+        handle(detector.feed(touches: s, time: event.timestamp), touchesEmpty: s.isEmpty)
+    }
+
+    /// Вызывается слоем ~60 раз в секунду, пока ладонь лежит на экране.
+    func tick() {
+        guard !lastSamples.isEmpty else { return }
+        switch detector.state {
+        case .holding, .armed:
+            handle(detector.feed(touches: lastSamples, time: ProcessInfo.processInfo.systemUptime), touchesEmpty: false)
+        default:
+            break
+        }
+    }
+
+    private func handle(_ out: PalmDetector.Output, touchesEmpty: Bool) {
         switch out {
         case .began:
             if state == .possible { state = .began }
@@ -112,7 +137,7 @@ final class PalmGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDeleg
             onCancelled?()
             if state == .began || state == .changed { state = .cancelled }
         case .none:
-            if s.isEmpty && state == .possible { state = .failed }
+            if touchesEmpty && state == .possible { state = .failed }
         }
     }
 
@@ -120,6 +145,19 @@ final class PalmGestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDeleg
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) { process(event) }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { process(event) }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        // iOS может сама отменить крупные касания (защита от ладони). Если ладонь уже
+        // продержалась нужное время — это то же, что «убрал руку»: призраки появляются.
+        lastSamples = []
+        var heldLongEnough = detector.state == .armed
+        if case .holding(let p) = detector.state, p >= 0.4 { heldLongEnough = true }
+        if heldLongEnough {
+            // iOS отбросила крупное касание, но ладонь уже заметно полежала — засчитываем
+            detector.reset()
+            onArmed?()
+            onTriggered?()
+            state = (state == .possible) ? .failed : .ended
+            return
+        }
         detector.reset()
         onCancelled?()
         state = (state == .possible) ? .failed : .cancelled

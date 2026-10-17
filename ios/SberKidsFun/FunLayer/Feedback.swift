@@ -29,8 +29,28 @@ final class SoundPlayer {
         player.play()
     }
 
+    /// Короткие звуки касаний (лопание, хихиканье): каждый раз новый плеер и чуть другая
+    /// высота тона — быстрые касания не обрывают друг друга и не звучат одинаково.
+    private var oneShots: [AVAudioPlayer] = []
+
+    func playVaried(_ url: URL?, volume: Float = 0.7) {
+        guard let url, let p = try? AVAudioPlayer(contentsOf: url) else { return }
+        if !configured {
+            try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+            configured = true
+        }
+        oneShots.removeAll { !$0.isPlaying }
+        p.enableRate = true
+        p.rate = Float.random(in: 0.82...1.25)
+        p.volume = volume
+        p.play()
+        oneShots.append(p)
+    }
+
     func stopAll() {
         players.values.forEach { $0.stop() }
+        oneShots.forEach { $0.stop() }
+        oneShots.removeAll()
     }
 }
 

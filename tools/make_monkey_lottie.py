@@ -31,21 +31,36 @@ def rgb(h):
     h = h.lstrip("#")
     return [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
 
-FUR = rgb("#9A6140")
-FUR_DARK = rgb("#6E4129")
-FUR_LIGHT = rgb("#B97E55")
-SKIN = rgb("#F9D9B0")
-SKIN_DARK = rgb("#EDBE8F")
-EAR_IN = rgb("#F3A49B")
-INK = rgb("#2A1A12")
-MOUTH = rgb("#8C2F2B")
-CHEEK = rgb("#FF8C8C")
+FUR_HI = rgb("#C99062")
+FUR = rgb("#8E5634")
+FUR_DARK = rgb("#4F2B17")
+FUR_RIM = rgb("#E6B488")
+FACE_HI = rgb("#FFF0E4")
+FACE = rgb("#F8CBAE")
+FACE_SH = rgb("#E39C7C")
+EAR_IN = rgb("#F4A994")
+INK = rgb("#23140D")
+IRIS = rgb("#6B3A1E")
+MOUTH = rgb("#7C2622")
+TONGUE = rgb("#FF8597")
+CHEEK = rgb("#FF7F8C")
+NOSE = rgb("#6E3828")
+BROW = rgb("#5E3420")
 WHITE = [1, 1, 1]
-BANANA = rgb("#FFD84A")
-BANANA_DARK = rgb("#E8A92C")
-BANANA_TIP = rgb("#6B4518")
-DUST = rgb("#D9D3E8")
+BANANA_HI = rgb("#FFF7B0")
+BANANA = rgb("#FFD53C")
+BANANA_SH = rgb("#F2A114")
+BANANA_DEEP = rgb("#D9800C")
+BANANA_STEM_HI = rgb("#9CC24A")
+BANANA_STEM = rgb("#5E6B22")
+BANANA_TIP = rgb("#3E2812")
+SUGAR = rgb("#B0701B")
+DUST = rgb("#E3DDF2")
 SPARK = rgb("#FFF3A6")
+WHOOSH = rgb("#C9B8FF")
+# совместимость со старыми именами
+SKIN = FACE
+SKIN_DARK = FACE_SH
 
 # ------------------------------------------------------------------ утилиты Lottie
 
@@ -64,9 +79,12 @@ def anim(frames, values, dims=1, hold=False):
         return static(v if dims > 1 else v)
     keys = []
     prev = None
-    for f, v in zip(frames, values):
-        s = [r1(x) for x in v] if dims > 1 else [r1(v)]
-        if s == prev and f != frames[-1]:
+    vals = [[r1(x) for x in v] if dims > 1 else [r1(v)] for v in values]
+    for idx, (f, s) in enumerate(zip(frames, vals)):
+        nxt = vals[idx + 1] if idx + 1 < len(vals) else None
+        # пропускаем ключ внутри постоянного участка, но сохраняем его границы —
+        # иначе линейная интерполяция «растягивает» скачок на весь участок
+        if s == prev and nxt == s:
             continue
         k = {"t": f, "s": s}
         if hold:
@@ -104,6 +122,20 @@ def radial(c0, c1, c2, start, end):
             "s": static(list(start)), "e": static(list(end)),
             "h": static(0), "a": static(0),
             "g": {"p": 3, "k": static([0] + c0 + [0.55] + c1 + [1] + c2)}}
+
+
+def grad(stops, start, end, kind=1):
+    """Градиентная заливка: stops = [(позиция 0…1, rgb)], kind 1 — линейный, 2 — радиальный."""
+    k = []
+    for pos, c in stops:
+        k += [pos] + list(c)
+    return {"ty": "gf", "o": static(100), "r": 1, "bm": 0, "t": kind,
+            "s": static(list(start)), "e": static(list(end)), "h": static(0), "a": static(0),
+            "g": {"p": len(stops), "k": static(k)}}
+
+
+def outline(w=1.3, o=55):
+    return stroke(INK, w, o)
 
 
 def ellipse(x, y, w, h):
@@ -149,7 +181,7 @@ def layer(name, shapes, parent=None, kind=4, ip=0, op=OP):
 # (родитель, точка крепления в системе родителя)
 JOINTS = {
     "torso": ("root", (0, 0)),
-    "head": ("torso", (3, -44)),
+    "head": ("torso", (3, -36)),
     "uaN": ("torso", (5, -35)), "faN": ("uaN", (0, 20)), "hdN": ("faN", (0, 19)),
     "uaF": ("torso", (-5, -35)), "faF": ("uaF", (0, 20)), "hdF": ("faF", (0, 19)),
     "thN": ("root", (5, -3)), "shN": ("thN", (0, 18)), "ftN": ("shN", (0, 16)),
@@ -249,7 +281,7 @@ def flight(s):
 def timeline(f):
     """→ (x, y, rotation, facing, pose, mouth_open)"""
     if f <= F_RUN_END:
-        x = lerp(-70, 292, f / F_RUN_END)
+        x = lerp(-22, 292, f / F_RUN_END)   # сразу в кадре — без паузы на «вбегание»
         ph = 2 * math.pi * f / CYCLE
         y = G - 7 * abs(math.sin(ph))
         p = run_pose(ph)
@@ -351,36 +383,62 @@ def apply(m, pt):
 
 # ------------------------------------------------------------------ рисуем части тела
 
-def capsule(length, width, color):
-    return group([rect(0, length / 2, width, length + width, width / 2), fill(color)])
+def capsule(length, width, color, dark=False):
+    """Конечность-«плюш»: объём градиентом поперёк, светлая кромка сверху, без контура."""
+    hi, mid, lo = (FUR, FUR_DARK, FUR_DARK) if dark else (FUR_HI, FUR, FUR_DARK)
+    return group([rect(0, length / 2, width, length + width, width / 2),
+                  grad([(0, hi), (0.45, mid), (1, lo)], (-width / 2, 0), (width / 2 + 1, 0))])
+
+
+def hand(dark=False):
+    c0, c1, c2 = (FACE, FACE_SH, FACE_SH) if dark else (FACE_HI, FACE, FACE_SH)
+    return [group([ellipse(5, 2.5, 6, 7), grad([(0, c0), (1, c2)], (3, 0), (7, 6), 2)], "thumb"),
+            group([ellipse(0, 5, 14, 13.5), grad([(0, c0), (0.6, c1), (1, c2)], (-3, 1), (6, 11), 2)], "palm")]
+
+
+def foot(dark=False):
+    c0, c1, c2 = (FACE, FACE_SH, FACE_SH) if dark else (FACE_HI, FACE, FACE_SH)
+    return [group([ellipse(14, 1.5, 6, 6.5), ellipse(9.5, 0.5, 6, 6.5), grad([(0, c1), (1, c2)], (9, -2), (14, 5))], "toes"),
+            group([ellipse(6, 3, 22, 11), grad([(0, c0), (0.6, c1), (1, c2)], (2, -1), (10, 9), 2)], "sole")]
 
 
 def banana_shape():
-    pts = [
-        (-17, -2, (0, 0), (4, 9)),
-        (0, 7, (-9, 0), (9, 0)),
-        (17, -3, (-3, 8), (0, 0)),
-        (15, -6, (0, 0), (-4, 4)),
-        (0, 1, (8, 0), (-8, 0)),
-        (-14, -6, (4, 4), (0, 0)),
+    """Глянцевый 3D-банан: грани, блик, зелёный хвостик, сахарные крапинки."""
+    k = 1.5
+    def pt(x, y, i=(0, 0), o=(0, 0)):
+        return (x * k, y * k, (i[0] * k, i[1] * k), (o[0] * k, o[1] * k))
+    def P(x, y):
+        return (x * k, y * k)
+    body = [pt(-15, -3, (0, 0), (4, 10)), pt(1, 7.5, (-9, 0), (9, 0)), pt(17, -2, (-3, 8), (0, 0)),
+            pt(15, -6, (0, 0), (-4, 5)), pt(1, 1.5, (8, 0), (-8, 0)), pt(-12, -7, (4, 4), (0, 0))]
+    belly = [pt(-14, -3.4, (0, 0), (4, 9)), pt(1, 7.5, (-9, 0), (9, 0)), pt(16.6, -2.4, (-3, 8), (0, 0)),
+             pt(1, 3.8, (8, 1), (-8, 1))]
+    shine = [pt(-9, -2.6, (0, 0), (3, 3)), pt(4, 1.4, (-4, 0.5), (0, 0))]
+    stem = [pt(-12, -7, (0, 0), (0, 0)), pt(-15, -12.5, (0, 0), (0, 0)), pt(-12.5, -13.5, (0, 0), (0, 0)),
+            pt(-9.5, -7.8, (0, 0), (0, 0))]
+    return [
+        group([ellipse(*P(4, 3.5), 1.6 * k, 1.1 * k), ellipse(*P(9, 1.8), 1.2 * k, 0.9 * k),
+               ellipse(*P(-5, 1.6), 1.0 * k, 0.8 * k), fill(SUGAR, 55)], "sugar"),
+        group([ellipse(*P(16.2, -4.3), 3.2 * k, 3.8 * k), fill(BANANA_TIP)], "tip"),
+        group([path(stem), grad([(0, BANANA_STEM_HI), (1, BANANA_STEM)], P(-15, -13), P(-10, -7))], "stem"),
+        group([path(shine, closed=False), stroke(WHITE, 2.4, 80)], "shine"),
+        group([path(belly), grad([(0, BANANA_SH), (1, BANANA_DEEP)], P(1, 2), P(1, 8))], "belly"),
+        group([path(body), grad([(0, BANANA_HI), (0.45, BANANA), (1, BANANA_SH)], P(-6, -7), P(6, 6))], "body"),
     ]
-    body = group([path(pts), stroke(BANANA_DARK, 1.6), fill(BANANA)], "banana")
-    shine = group([path([(-8, 1, (0, 0), (4, 3)), (6, 3, (-4, 1), (0, 0))], closed=False),
-                   stroke([1, 0.97, 0.75], 1.6, 80)], "shine")
-    tips = group([ellipse(-16.5, -4, 3.5, 4), ellipse(16, -4.5, 3, 3.5), fill(BANANA_TIP)], "tips")
-    return [tips, shine, body]
 
 
 def head_shapes():
     blink_frames = list(range(0, OP + 1, STEP))
-    blink = [100 if not any(abs(f - b) < 4 for b in (40, 150, 230)) else 15 for f in blink_frames]
+    blink = [100 if not any(abs(f - b) < 4 for b in (40, 150, 230)) else 10 for f in blink_frames]
     eyes_tr = tr(sa=anim(blink_frames, [[100, v] for v in blink], dims=2))
-    eyes_tr["p"] = static([6, -27])
-    eyes_tr["a"] = static([6, -27])
+    eyes_tr["p"] = static([5.5, -34])
+    eyes_tr["a"] = static([5.5, -34])
     eyes = group([
-        group([ellipse(1.5, -27, 2.4, 2.4), ellipse(15.5, -27, 2.4, 2.4), fill(WHITE)], "hl"),
-        group([ellipse(0, -26, 6, 7), ellipse(14, -26, 6, 7), fill(INK)], "pupils"),
-        group([ellipse(-2, -27, 11, 13), ellipse(12, -27, 11, 13), fill(WHITE)], "whites"),
+        group([ellipse(-7, -38.5, 5.6, 6.2), ellipse(12, -38.5, 5.6, 6.2), fill(WHITE)], "hl1"),
+        group([ellipse(-1.2, -29.8, 2.4, 2.4), ellipse(17.8, -29.8, 2.4, 2.4), fill(WHITE, 85)], "hl2"),
+        group([ellipse(-3.2, -31, 9, 7), ellipse(15.8, -31, 9, 7), fill(IRIS, 70)], "iris_glow"),
+        group([ellipse(-4, -34, 14, 17), ellipse(15, -34, 14, 17),
+               grad([(0, rgb("#3A2219")), (1, INK)], (-4, -40), (-4, -26))], "eyeballs"),
     ], "eyes", eyes_tr)
 
     mouth_frames = list(range(0, OP + 1, STEP))
@@ -389,31 +447,58 @@ def head_shapes():
     smile_tr["o"] = anim(mouth_frames, [100 - v for v in open_v])
     open_tr = tr()
     open_tr["o"] = anim(mouth_frames, open_v)
-    smile = group([path([(0, -14, (0, 0), (2, 4)), (12, -14, (-2, 4), (0, 0))], closed=False),
-                   stroke(INK, 1.8)], "smile", smile_tr)
-    mouth_open = group([ellipse(6, -11.5, 7, 8), fill(MOUTH)], "open", open_tr)
+    smile = group([path([(-2, -17, (0, 0), (3.5, 5.5)), (13, -17, (-3.5, 5.5), (0, 0))], closed=False),
+                   stroke(MOUTH, 2.3)], "smile", smile_tr)
+    mouth_open = group([
+        group([ellipse(5.5, -9.5, 7, 4.5), fill(TONGUE)], "tongue"),
+        group([ellipse(5.5, -12.5, 11, 12), grad([(0, rgb("#A0322C")), (1, MOUTH)], (5.5, -18), (5.5, -7))], "mouth"),
+    ], "open", open_tr)
+
+    tuft = group([
+        path([(-3, -60, (0, 0), (-2, -7)), (2, -70, (-4, 2), (0, 0)), (5, -61, (0, 0), (0, 0))]),
+        path([(4, -61, (0, 0), (1, -9)), (11, -72, (-3, 3), (0, 0)), (12, -60, (0, 0), (0, 0))]),
+        path([(11, -60, (0, 0), (3, -6)), (19, -66, (-3, 1), (0, 0)), (17, -58, (0, 0), (0, 0))]),
+        grad([(0, FUR_HI), (1, FUR)], (6, -72), (8, -58)),
+    ], "tuft")
     return [
-        group([path([(-3, -46, (0, 0), (2, -5)), (3, -49, (-2, 2), (0, 0)), (4, -43, (0, 0), (0, 0))]),
-               fill(FUR_DARK)], "tuft"),
+        group([ellipse(5.5, -22, 15, 6), fill(WHITE, 30)], "muzzle_shine"),
+        group([path([(-11, -45.5, (0, 0), (3, -3.5)), (0, -47, (-3.5, -1.5), (0, 0))], closed=False),
+               path([(11, -47, (0, 0), (3.5, -1.5)), (21.5, -45.5, (-3, -3.5), (0, 0))], closed=False),
+               stroke(BROW, 2.8)], "brows"),
         eyes,
         mouth_open,
         smile,
-        group([ellipse(4.5, -18.5, 2.2, 1.6), ellipse(8.5, -18.5, 2.2, 1.6), fill(INK, 85)], "nose"),
-        group([ellipse(-7, -15, 7, 4.5), ellipse(18, -15, 7, 4.5), fill(CHEEK, 55)], "cheeks"),
-        group([ellipse(-5, -28, 21, 21), ellipse(13, -28, 21, 21), ellipse(5, -15, 32, 20), fill(SKIN)], "face"),
-        group([ellipse(2, -22, 48, 46), radial(FUR_LIGHT, FUR, FUR_DARK, (-8, -36), (26, -2))], "skull"),
-        group([ellipse(27, -21, 8, 9), fill(EAR_IN)], "earR_in"),
-        group([ellipse(26, -21, 14, 15), fill(FUR)], "earR"),
-        group([ellipse(-22, -22, 8, 9), fill(EAR_IN)], "earL_in"),
-        group([ellipse(-21, -22, 15, 16), fill(FUR)], "earL"),
+        group([ellipse(4.6, -24.2, 2.4, 1.2), fill(WHITE, 55)], "nose_hl"),
+        group([path([(5.5, -20.5, (0, 0), (-4, -1)), (1.5, -24.5, (0, 2.5), (0, -2)), (5.5, -26, (-2, 0), (2, 0)),
+                     (9.5, -24.5, (0, -2), (0, 2.5)), (5.5, -20.5, (4, -1), (0, 0))]),
+               grad([(0, rgb("#9A5A44")), (1, NOSE)], (5.5, -26), (5.5, -20.5))], "nose"),
+        group([ellipse(-12, -21, 11, 7), ellipse(23, -21, 11, 7), fill(CHEEK, 28)], "cheeks_soft"),
+        group([ellipse(-12, -21, 7, 4.5), ellipse(23, -21, 7, 4.5), fill(CHEEK, 40)], "cheeks"),
+        group([ellipse(-4.5, -34, 29, 29), ellipse(15.5, -34, 29, 29), ellipse(5.5, -18, 42, 31),
+               grad([(0, FACE_HI), (0.55, FACE), (1, FACE_SH)], (0, -40), (12, -2), 2)], "face"),
+        group([path([(30, -48, (0, 0), (6, 8)), (33, -18, (4, -10), (0, 0))], closed=False),
+               stroke(FUR_RIM, 3.2, 55)], "rim"),
+        tuft,
+        group([ellipse(5.5, -32, 66, 62), grad([(0, FUR_HI), (0.5, FUR), (1, FUR_DARK)], (-12, -54), (38, 6), 2)], "skull"),
+        group([ellipse(40, -30, 13, 14), grad([(0, FACE_HI), (1, EAR_IN)], (38, -34), (42, -24), 2)], "earR_in"),
+        group([ellipse(39, -30, 22, 23), grad([(0, FUR_HI), (1, FUR_DARK)], (34, -38), (46, -20), 2)], "earR"),
+        group([ellipse(-29, -30, 14, 15), grad([(0, FACE_HI), (1, EAR_IN)], (-31, -34), (-27, -24), 2)], "earL_in"),
+        group([ellipse(-28, -30, 24, 25), grad([(0, FUR_HI), (1, FUR_DARK)], (-34, -38), (-22, -20), 2)], "earL"),
     ]
 
 
 def torso_shapes():
     return [
-        group([ellipse(5, -19, 24, 30), fill(SKIN_DARK)], "belly"),
-        group([ellipse(0, -22, 38, 50), radial(FUR_LIGHT, FUR, FUR_DARK, (-6, -36), (24, 0))], "body"),
+        group([ellipse(3, -41, 30, 9), fill(FUR_DARK, 35)], "ao"),
+        group([ellipse(1, -33, 8, 4), fill(WHITE, 20)], "sheen"),
+        group([ellipse(5, -19, 26, 30), grad([(0, FACE_HI), (0.6, FACE), (1, FACE_SH)], (2, -30), (8, -5), 2)], "belly"),
+        group([ellipse(0, -21, 40, 46), grad([(0, FUR_HI), (0.55, FUR), (1, FUR_DARK)], (-8, -38), (24, 2), 2)], "body"),
     ]
+
+
+def whoosh():
+    arc = [(-48, -26, (0, 0), (0, -27)), (0, -74, (-27, 0), (27, 0)), (48, -26, (0, -27), (0, 0))]
+    return [group([path(arc, closed=False), stroke(WHOOSH, 5, 100)], "arc")]
 
 
 def star(size):
@@ -490,24 +575,29 @@ def build():
     banana_held["ks"]["p"] = static([held_local[0], held_local[1], 0])
     banana_held["ks"]["r"] = static(held_rot_local)
 
-    bone_layer("handN", [group([ellipse(0, 4, 12, 12), fill(SKIN_DARK)])], "hdN")
-    bone_layer("forearmN", [capsule(19, 8.5, FUR)], "faN")
-    bone_layer("upperarmN", [capsule(20, 9.5, FUR)], "uaN")
-    bone_layer("footN", [group([ellipse(6, 3, 19, 9), fill(SKIN_DARK)])], "ftN")
-    bone_layer("shinN", [capsule(16, 10, FUR)], "shN")
-    bone_layer("thighN", [capsule(18, 12, FUR)], "thN")
+    bone_layer("handN", hand(), "hdN")
+    bone_layer("forearmN", [capsule(19, 9, FUR)], "faN")
+    bone_layer("upperarmN", [capsule(20, 10, FUR)], "uaN")
+    bone_layer("footN", foot(), "ftN")
+    bone_layer("shinN", [capsule(16, 10.5, FUR)], "shN")
+    bone_layer("thighN", [capsule(18, 12.5, FUR)], "thN")
     bone_layer("head", head_shapes(), "head")
     bone_layer("torso", torso_shapes(), "torso")
-    bone_layer("footF", [group([ellipse(6, 3, 18, 8.5), fill(SKIN)])], "ftF")
-    bone_layer("shinF", [capsule(16, 9.5, FUR_DARK)], "shF")
-    bone_layer("thighF", [capsule(18, 11.5, FUR_DARK)], "thF")
-    bone_layer("handF", [group([ellipse(0, 4, 11, 11), fill(SKIN)])], "hdF")
-    bone_layer("forearmF", [capsule(19, 8, FUR_DARK)], "faF")
-    bone_layer("upperarmF", [capsule(20, 9, FUR_DARK)], "uaF")
-    bone_layer("tail3", [group([path([(0, 0, (0, 0), (8, 6)), (2, 16, (6, 2), (0, 0))], closed=False),
-                                stroke(FUR_DARK, 6)])], "t3")
-    bone_layer("tail2", [capsule(13, 6, FUR_DARK)], "t2")
-    bone_layer("tail1", [capsule(15, 6.5, FUR_DARK)], "t1")
+    bone_layer("footF", foot(dark=True), "ftF")
+    bone_layer("shinF", [capsule(16, 10, FUR, dark=True)], "shF")
+    bone_layer("thighF", [capsule(18, 12, FUR, dark=True)], "thF")
+    bone_layer("handF", hand(dark=True), "hdF")
+    bone_layer("forearmF", [capsule(19, 8.5, FUR, dark=True)], "faF")
+    bone_layer("upperarmF", [capsule(20, 9.5, FUR, dark=True)], "uaF")
+    wl = layer("whoosh", whoosh(), ip=F_KICK, op=F_FLIP_END + 6)
+    wl["_parent_bone"] = "root"
+    wf = list(range(F_KICK, F_FLIP_END + 6, 2))
+    wl["ks"]["o"] = anim(wf, [70 * math.sin(math.pi * (f - F_KICK) / (F_FLIP_END + 6 - F_KICK)) for f in wf])
+    wl["ks"]["r"] = static(-40)
+    bone_layer("tail3", [group([path([(0, 0, (0, 0), (10, 7)), (2, 19, (8, 2), (0, 0))], closed=False),
+                                stroke(FUR, 7.5)])], "t3")
+    bone_layer("tail2", [capsule(13, 7, FUR, dark=True)], "t2")
+    bone_layer("tail1", [capsule(15, 7.5, FUR, dark=True)], "t1")
 
     # --- пыль при приземлении и у стены
     def dust(at_frame, cx, cy, n, spread):

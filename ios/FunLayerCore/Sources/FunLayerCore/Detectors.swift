@@ -105,7 +105,7 @@ public final class PalmDetector {
     private var startTime = 0.0
     private var startCentroid = (x: 0.0, y: 0.0)
     private var lastPalmLike = 0.0
-    private let dropGrace = 0.25
+    private let dropGrace = 0.6
 
     public init(params: PalmParams = PalmParams()) { self.params = params }
 
@@ -190,6 +190,8 @@ public final class FaceDownFlipDetector {
     public var params: FlipParams
     private var downSince: Double?
     private var wasDownLongEnough = false
+    /// Телефон лежит экраном вниз уже достаточно долго — можно подать звуковой намёк.
+    public var isArmed: Bool { wasDownLongEnough }
 
     public init(params: FlipParams = FlipParams()) { self.params = params }
 

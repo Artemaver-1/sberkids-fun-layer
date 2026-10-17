@@ -1,4 +1,5 @@
 import FunLayerCore
+import Lottie
 import QuartzCore
 import UIKit
 
@@ -20,8 +21,15 @@ final class EffectRuntime: Identifiable {
     private(set) var layers: [Layer] = []
     /// Куда смотрят призраки (палец ребёнка).
     var lookTarget: CGPoint?
+    /// Длительность самой длинной Lottie-анимации эффекта с учётом скорости (с).
+    private(set) var lottieDuration: Double = 0
 
-    var duration: Double { decision.variant.effect.duration }
+    /// Эффект длится не меньше своей Lottie-анимации — персонаж не исчезает на полпути.
+    var hasLottie: Bool {
+        layers.contains { if case .lottie(_, let url) = $0 { return url != nil } else { return false } }
+    }
+
+    var duration: Double { max(decision.variant.effect.duration, lottieDuration > 0 ? lottieDuration + 0.3 : 0) }
     var effect: Effect { decision.variant.effect }
 
     init(decision: PlayDecision, size: CGSize, config: FunConfig, assets: AssetStore) {
@@ -41,7 +49,11 @@ final class EffectRuntime: Identifiable {
                 layers.append(.particles(ParticleField(spec: spec, width: size.width, height: size.height, rng: rng),
                                          image(spec.asset)))
             case .lottie(let spec):
-                layers.append(.lottie(spec, assets.localURL(forKey: spec.asset, in: config)))
+                let url = assets.localURL(forKey: spec.asset, in: config)
+                if let url, let anim = LottieAnimation.filepath(url.path, animationCache: DefaultAnimationCache.sharedCache) {
+                    lottieDuration = max(lottieDuration, anim.duration / max(0.1, spec.speed))
+                }
+                layers.append(.lottie(spec, url))
             case .fog(let spec):
                 layers.append(.fog(spec, image(spec.asset)))
             case .ghosts(let spec):

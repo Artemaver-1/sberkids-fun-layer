@@ -1,4 +1,5 @@
 import FunLayerCore
+import Lottie
 import SwiftUI
 import UIKit
 
@@ -37,7 +38,8 @@ final class FunLayer: ObservableObject {
     static let shared = FunLayer()
 
     /// Экраны приложения. Денежные помечены в ScreenPolicy.sensitive и закрыты для приколов в коде.
-    static let screens: Set<String> = ["main", "piggy", "tasks", "content", "profile", "transfer", "top_up", "debug"]
+    static let screens: Set<String> = ["main", "piggy", "tasks", "content", "profile", "transfer", "top_up", "debug",
+                                       "history", "design", "content_detail", "tasks_detail", "piggy_detail"]
     let policy = ScreenPolicy(knownScreens: FunLayer.screens)
 
     @Published private(set) var config: FunConfig?
@@ -64,6 +66,9 @@ final class FunLayer: ObservableObject {
     private let palm = PalmGestureRecognizer()
     private let pull = PullHoldDetector()
     private var pullEnabled = false
+    private var lastPullDistance = 0.0
+    private var maxPullSeen = 0.0
+    private var pullTicker: Task<Void, Never>?
     private var overlay: OverlayWindow?
     private var endTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -72,6 +77,7 @@ final class FunLayer: ObservableObject {
     var calibrating = false { didSet { updateSensors() } }
     private var palmEggActive = false
     private var shakeEggActive = false
+    private var lastLoggedTouches = 0
     var toastFrame: CGRect = .zero
 
     private init() {
@@ -88,15 +94,23 @@ final class FunLayer: ObservableObject {
         palm.onProgress = { [weak self] p in self?.palmChanged(p) }
         palm.onArmed = { [weak self] in self?.palmArmedNow() }
         palm.onTriggered = { [weak self] in self?.palmTriggered() }
-        palm.onCancelled = { [weak self] in self?.palmReset() }
+        palm.onCancelled = { [weak self] in
+            self?.log("palm cancelled")
+            self?.palmReset()
+        }
         palm.onSample = { [weak self] count, radius, point in
             guard let self else { return }
             if self.calibrating { self.calibration = (count, radius) }
+            if self.palmEggActive, count > 0, count != self.lastLoggedTouches {
+                self.log("touches=\(count) maxRadius=\(Int(radius))")
+            }
+            self.lastLoggedTouches = count
             self.effect?.lookTarget = point
         }
 
         motion.onShake = { [weak self] in self?.trigger(.shake) }
         motion.onFlip = { [weak self] in self?.trigger(.faceDownFlip) }
+        motion.onFlipArmed = { [weak self] in self?.flipArmed() }
 
         let o = OverlayWindow(windowScene: scene)
         let host = UIHostingController(rootView: OverlayRootView().environmentObject(self))
@@ -108,6 +122,8 @@ final class FunLayer: ObservableObject {
         overlay = o
 
         apply(loader.loadOnLaunch())
+        log("installed: config=\(config?.configId ?? "nil") eggs=\(config?.eggs.count ?? 0) window=\(o.bounds.size) warnings=\(warnings)")
+        handleLaunchArguments()
 
         let nc = NotificationCenter.default
         nc.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -122,6 +138,33 @@ final class FunLayer: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if case .remote(let url) = self?.loader.savedSource { await self?.loadRemote(url) }
         }
+    }
+
+    /// Аргументы запуска для автоматической проверки на устройстве:
+    /// `-funReset` — сбросить прогресс, `-funForce <id>` — запустить пасхалку через 1,5 с,
+    /// `-funPreset <name>` — встроенный конфиг.
+    private func handleLaunchArguments() {
+        let args = ProcessInfo.processInfo.arguments
+        func value(_ key: String) -> String? {
+            args.firstIndex(of: key).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+        }
+        if args.contains("-funReset") { resetProgress() }
+        if let preset = value("-funPreset") { useBundled(preset) }
+        if let id = value("-funForce") {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self?.forcePlay(id)
+            }
+        }
+    }
+
+    private var traceStart: CFTimeInterval = 0
+
+    func log(_ s: String) {
+        #if DEBUG
+        let dt = traceStart > 0 ? String(format: " +%.0f ms", (CACurrentMediaTime() - traceStart) * 1000) : ""
+        print("[FunLayer] \(s)\(dt)")
+        #endif
     }
 
     var overlaySize: CGSize { overlay?.bounds.size ?? UIScreen.main.bounds.size }
@@ -187,6 +230,21 @@ final class FunLayer: ObservableObject {
         teaser = nil
         updateSensors()
         scheduleTeaser()
+        prewarmLottie()
+    }
+
+    /// На экране с персонажем заранее разбираем его Lottie в кэш — запуск без задержки.
+    private func prewarmLottie() {
+        guard let engine, let config else { return }
+        for egg in engine.eggs(on: currentScreen, now: Date()) {
+            for variant in egg.variants {
+                for case .lottie(let spec) in variant.effect.layers {
+                    if let url = loader.assets.localURL(forKey: spec.asset, in: config) {
+                        _ = LottieAnimation.filepath(url.path, animationCache: DefaultAnimationCache.sharedCache)
+                    }
+                }
+            }
+        }
     }
 
     private func appActive(_ active: Bool) {
@@ -226,6 +284,30 @@ final class FunLayer: ObservableObject {
 
     func reportPull(distance: Double) {
         guard pullEnabled, effect == nil else { return }
+        if distance > maxPullSeen { maxPullSeen = distance }
+        if distance < 5, maxPullSeen > 20 {
+            log("pull released, max \(Int(maxPullSeen)) pt")
+            maxPullSeen = 0
+        }
+        lastPullDistance = distance
+        feedPull()
+        // Пока ребёнок держит ленту неподвижно, список не присылает новых событий —
+        // поэтому, пока лента перетянута, время удержания досчитываем сами.
+        if distance >= pull.params.distance * 0.5, pullTicker == nil {
+            pullTicker = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard let self, self.pullEnabled, self.effect == nil,
+                          self.lastPullDistance >= self.pull.params.distance * 0.25 else { break }
+                    self.feedPull()
+                }
+                self?.pullTicker = nil
+            }
+        }
+    }
+
+    private func feedPull() {
+        let distance = lastPullDistance
         let out = pull.feed(distance: distance, time: CACurrentMediaTime())
         let fraction = pull.pullFraction(distance: distance)
         if abs(fraction - pullFraction) > 0.01 || fraction == 0 { pullFraction = fraction }
@@ -235,22 +317,48 @@ final class FunLayer: ObservableObject {
         case .triggered:
             pullHold = 0
             pullFraction = 0
+            log("pullHold triggered at \(Int(distance)) pt")
+            NotificationCenter.default.post(name: .funLayerReleasePull, object: nil)
+            lastPullDistance = 0
             trigger(.pullHold)
         case .idle:
             pullHold = 0
         }
     }
 
+    private var palmTicker: Task<Void, Never>?
+
     private func palmChanged(_ p: Double) {
         guard palmEggActive, effect == nil, sheet == nil else { return }
-        palmProgress = p
+        palmProgress = max(0.02, p)
+        if palmTicker == nil {
+            palmTicker = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 16_000_000)
+                    guard let self, self.palmProgress > 0 else { break }
+                    self.palm.tick()
+                }
+                self?.palmTicker = nil
+            }
+        }
     }
 
     private func palmArmedNow() {
         guard palmEggActive, effect == nil, sheet == nil else { return }
+        log("palm armed")
         palmProgress = 1
         palmArmed = true
         Haptics.play(.medium)
+    }
+
+    /// Телефон лежит экраном вниз: тихое «ууу» и лёгкая вибрация — призраки уже рядом.
+    private func flipArmed() {
+        guard let engine, let config, effect == nil, sheet == nil else { return }
+        guard let egg = engine.eggs(on: currentScreen, now: Date()).first(where: { $0.triggerKinds.contains(.faceDownFlip) }),
+              let sound = egg.variants.first?.effect.sound else { return }
+        log("flip armed")
+        Haptics.play(.light)
+        sounds.play(loader.assets.localURL(forKey: sound, in: config), volume: 0.35)
     }
 
     private func palmTriggered() {
@@ -260,8 +368,13 @@ final class FunLayer: ObservableObject {
     }
 
     private func palmReset() {
-        palmProgress = 0
-        palmArmed = false
+        palmTicker?.cancel()
+        palmTicker = nil
+        guard palmProgress > 0 || palmArmed else { return }
+        withAnimation(.easeOut(duration: 0.35)) {
+            palmProgress = 0
+            palmArmed = false
+        }
     }
 
     // MARK: - Эффект
@@ -282,18 +395,32 @@ final class FunLayer: ObservableObject {
 
     private func start(_ d: PlayDecision) {
         guard let config else { return }
+        traceStart = CACurrentMediaTime()
+        log("play \(d.egg.id)/\(d.variant.id) first=\(d.isFirstFind) \(d.foundCount)/\(d.total)")
         toast = nil
         teaser = nil
         teaserTask?.cancel()
         let runtime = EffectRuntime(decision: d, size: overlaySize, config: config, assets: loader.assets)
+        log("runtime ready")
         withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
         updateSensors()
         if d.trigger == .palm { palm.isEnabled = true }
         Haptics.play(d.variant.effect.haptic)
-        if let s = d.variant.effect.sound { sounds.play(loader.assets.localURL(forKey: s, in: config)) }
-
-        let duration = d.variant.effect.duration
         endTask?.cancel()
+        if runtime.hasLottie {
+            // Персонаж: звук стартует вместе с анимацией (lottieStarted), конец — по её завершению
+            // (lottieFinished). Таймер — только страховка, если анимация не сообщит о конце.
+            let safety = runtime.duration + 2
+            endTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(safety * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.showToast(for: d)
+                self?.finishEffect()
+            }
+            return
+        }
+        if let s = d.variant.effect.sound { sounds.play(loader.assets.localURL(forKey: s, in: config)) }
+        let duration = runtime.duration
         endTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64((duration - 0.45) * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -302,6 +429,20 @@ final class FunLayer: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.finishEffect()
         }
+    }
+
+    func lottieStarted(_ id: UUID) {
+        guard let effect, effect.id == id, let config else { return }
+        log("lottie started")
+        if let s = effect.decision.variant.effect.sound { sounds.play(loader.assets.localURL(forKey: s, in: config)) }
+    }
+
+    func lottieFinished(_ id: UUID) {
+        guard let effect, effect.id == id else { return }
+        log("lottie finished")
+        endTask?.cancel()
+        showToast(for: effect.decision)
+        finishEffect()
     }
 
     private func finishEffect() {
@@ -324,7 +465,7 @@ final class FunLayer: ObservableObject {
         if effect.tap(at: point) {
             Haptics.tick()
             if let s = effect.decision.variant.effect.interactSound {
-                sounds.play(loader.assets.localURL(forKey: s, in: config), volume: 0.6)
+                sounds.playVaried(loader.assets.localURL(forKey: s, in: config), volume: 0.7)
             }
         }
     }
@@ -390,13 +531,17 @@ final class FunLayer: ObservableObject {
 
     private func scheduleTeaser() {
         teaserTask?.cancel()
-        guard let engine, let t = engine.shouldShowTeaser(on: currentScreen) else { return }
+        guard let engine, let t = engine.shouldShowTeaser(on: currentScreen) else {
+            log("teaser skipped on \(currentScreen)")
+            return
+        }
         let screen = currentScreen
         teaserTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(t.delay * 1_000_000_000))
             guard let self, !Task.isCancelled, self.currentScreen == screen,
                   self.effect == nil, self.sheet == nil, self.isActive else { return }
             self.engine?.teaserShown()
+            self.log("teaser shown")
             self.teaser = TeaserRun(start: CACurrentMediaTime(), text: t.text)
             try? await Task.sleep(nanoseconds: 4_600_000_000)
             guard !Task.isCancelled, self.teaser?.poppedAt == nil else { return }

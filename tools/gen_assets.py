@@ -59,20 +59,21 @@ def bubble(size=320, gold=False, seed=1):
         phase = 4 * math.pi * nfilm * thickness * np.sqrt(1 - (1 - cos_t ** 2) / nfilm ** 2) / lam
         rgb[..., i] = np.sin(phase / 2) ** 2
     # насыщенность и яркость в духе макетов СберKids (лайм/лаванда/голубой)
-    rgb = 0.12 + 0.95 * rgb
+    # насыщенные цвета плёнки: на светлом фоне СберKids пузырь должен читаться
+    rgb = np.clip(1.25 * rgb - 0.1, 0, 1)
     if gold:
         gold_tint = np.array([1.0, 0.78, 0.25], np.float32)
         lum = rgb.mean(axis=2, keepdims=True)
         rgb = gold_tint * (0.55 + 0.6 * lum)
 
     # прозрачность: почти прозрачный центр, плотный обод (Френель)
-    fres = rr ** 7
-    alpha = 0.025 + 0.8 * fres
+    fres = rr ** 5
+    alpha = 0.06 + 0.85 * fres
     if gold:
         alpha = 0.1 + 0.85 * rr ** 4
     # тонкая кромка: цветная, чуть темнее — видна и на белом фоне
     edge = np.exp(-((rr - 0.982) / 0.016) ** 2)
-    rgb = rgb * (1 - edge[..., None] * 0.35)
+    rgb = rgb * (1 - edge[..., None] * 0.5)
     alpha = np.maximum(alpha, edge * 0.95)
 
     # блики: окно сверху-слева и маленький снизу-справа
@@ -149,7 +150,8 @@ def fog(size=256):
 SR = 22050
 
 
-def write_wav(name, samples):
+def write_wav(name, samples, peak=0.8):
+    samples = samples / (np.abs(samples).max() + 1e-9) * peak   # одинаковая громкость всех звуков
     samples = np.clip(samples, -1, 1)
     path = os.path.join(OUT, name)
     with wave.open(path, "wb") as w:
@@ -178,21 +180,170 @@ def place(buf, s, at):
     buf[i:i + len(s)] += s[:max(0, len(buf) - i)]
 
 
+def biquad_bandpass(x, f0, q):
+    """Резонатор (RBJ band-pass) — из таких собираются форманты голоса."""
+    w0 = 2 * math.pi * f0 / SR
+    alpha = math.sin(w0) / (2 * q)
+    b0, b2 = alpha, -alpha
+    a0, a1, a2 = 1 + alpha, -2 * math.cos(w0), 1 - alpha
+    b0, b2, a1, a2 = b0 / a0, b2 / a0, a1 / a0, a2 / a0
+    y = np.zeros_like(x)
+    x1 = x2 = y1 = y2 = 0.0
+    for i, xi in enumerate(x):
+        yi = b0 * xi + b2 * x2 - a1 * y1 - a2 * y2
+        x2, x1 = x1, xi
+        y2, y1 = y1, yi
+        y[i] = yi
+    return y
+
+
+VOWELS = {  # (частота форманты, добротность, вес)
+    "u": [(330, 6, 1.0), (820, 8, 0.5), (2400, 12, 0.15)],
+    "o": [(480, 6, 1.0), (900, 8, 0.6), (2500, 12, 0.15)],
+    "a": [(800, 5, 1.0), (1250, 7, 0.7), (2700, 12, 0.2)],
+    "i": [(300, 6, 0.8), (2300, 10, 0.9), (3000, 12, 0.4)],
+}
+
+
+def voice(f0_start, f0_end, dur, vowel, vibrato=6.0, vib_depth=0.03, breath=0.04, attack=0.03, release=0.08):
+    """Мультяшный голос: гармонический источник + форманты гласной."""
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    glide = f0_start + (f0_end - f0_start) * (t / dur) ** 0.7
+    f0 = glide * (1 + vib_depth * np.sin(2 * np.pi * vibrato * t))
+    phase = 2 * np.pi * np.cumsum(f0) / SR
+    src = np.zeros(n)
+    for k in range(1, 30):
+        if f0_end * k > 6000:
+            break
+        src += np.sin(k * phase) / k ** 1.1
+    src += RNG.standard_normal(n) * breath
+    out = sum(w * biquad_bandpass(src, f, q) for f, q, w in VOWELS[vowel])
+    envl = np.minimum(1, t / attack) * np.minimum(1, (dur - t) / release)
+    out = out * np.clip(envl, 0, 1)
+    return out / (np.abs(out).max() + 1e-9)
+
+
+def sweep_bandpass(x, f_curve, q):
+    """Полосовой фильтр с плавающей частотой (свист, «вжух»)."""
+    y = np.zeros_like(x)
+    x1 = x2 = y1 = y2 = 0.0
+    for i in range(len(x)):
+        if i % 32 == 0:
+            w0 = 2 * math.pi * f_curve[i] / SR
+            alpha = math.sin(w0) / (2 * q)
+            a0 = 1 + alpha
+            b0, b2, a1, a2 = alpha / a0, -alpha / a0, -2 * math.cos(w0) / a0, (1 - alpha) / a0
+        yi = b0 * x[i] + b2 * x2 - a1 * y1 - a2 * y2
+        x2, x1 = x1, x[i]
+        y2, y1 = y1, yi
+        y[i] = yi
+    return y
+
+
+def room(x, mix=0.18):
+    """Лёгкое «пространство»: несколько затухающих отражений."""
+    out = x.copy()
+    for ms, g in ((23, 0.45), (37, 0.32), (53, 0.22), (79, 0.14)):
+        k = int(SR * ms / 1000)
+        out[k:] += x[:-k] * g * mix * 2
+    return out
+
+
+def lowpass(x, cutoff):
+    """Однополюсный ФНЧ — смягчает «цифровую» резкость."""
+    a = math.exp(-2 * math.pi * cutoff / SR)
+    y = np.zeros_like(x)
+    acc = 0.0
+    for i, xi in enumerate(x):
+        acc = (1 - a) * xi + a * acc
+        y[i] = acc
+    return y
+
+
 def pop():
+    """ASMR-лопание мыльного пузыря: мягкий шумовой «пфт», влажное потрескивание, тёплый низ.
+    Без тональных «пиу» — звук шумовой и короткий, как у настоящей плёнки у микрофона."""
     n = int(SR * 0.11)
     t = np.arange(n) / SR
-    f = 950 * np.exp(-t * 18) + 260
-    phase = 2 * np.pi * np.cumsum(f) / SR
-    s = np.sin(phase) * env(n, 0.002, 38)
-    click = RNG.standard_normal(n) * env(n, 0.0005, 160) * 0.35
-    return (s * 0.75 + click) * 0.9
+    noise = RNG.standard_normal(n)
+    puff = biquad_bandpass(noise, 2300, 0.9) * np.exp(-t * 140) * np.minimum(1, t / 0.0008)
+    air = lowpass(noise, 5000) * np.exp(-t * 60) * 0.18
+    body = np.sin(2 * np.pi * 190 * t + 2 * np.exp(-t * 80)) * np.exp(-t * 85) * 0.55
+    wet = np.zeros(n)
+    for at, amp in ((0.006, 0.45), (0.014, 0.3), (0.025, 0.18), (0.039, 0.1)):
+        k = int(at * SR)
+        m = int(0.0016 * SR)
+        wet[k:k + m] += biquad_bandpass(RNG.standard_normal(m), 4200, 1.2) * amp * np.hanning(m)
+    out = puff * 0.9 + air + body + wet
+    return lowpass(room(out, 0.08), 9000)
+
+
+def bubbles():
+    """ASMR-бульканье: тихие пузырьки под водой — низкие, мягкие, с влажным шорохом."""
+    buf = np.zeros(int(SR * 1.5))
+    for i in range(11):
+        n = int(SR * 0.18)
+        t = np.arange(n) / SR
+        f0 = RNG.uniform(180, 480)
+        f = f0 * (1 + 0.35 * (1 - np.exp(-t * 22)))
+        b = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * RNG.uniform(16, 26)) * np.minimum(1, t / 0.008)
+        place(buf, b * RNG.uniform(0.25, 0.6), i * 0.12 + RNG.uniform(0, 0.06))
+    n = len(buf)
+    hiss = lowpass(RNG.standard_normal(n), 1800) * 0.05 * np.sin(np.pi * np.arange(n) / n) ** 2
+    out = lowpass(buf, 2400) + hiss
+    return room(out, 0.25)
+
+
+def _tone(freqs, dur, decay, amps=None):
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    amps = amps or [1.0] * len(freqs)
+    return sum(a * np.sin(2 * np.pi * f * t) for f, a in zip(freqs, amps)) * np.exp(-t * decay) * np.minimum(1, t / 0.002)
+
+
+def step(pitch=1.0):
+    return _tone([1300 * pitch, 2700 * pitch], 0.06, 95, [1.0, 0.35]) * 0.5
+
+
+def boing(f_start, f_end, dur=0.35):
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    f = f_start + (f_end - f_start) * (1 - np.exp(-t * 9)) + 40 * np.sin(2 * np.pi * 14 * t) * np.exp(-t * 7)
+    return np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 7) * np.minimum(1, t / 0.004)
+
+
+def thud():
+    n = int(SR * 0.22)
+    t = np.arange(n) / SR
+    body = np.sin(2 * np.pi * np.cumsum(120 * np.exp(-t * 12) + 60) / SR) * np.exp(-t * 22)
+    dust = biquad_bandpass(RNG.standard_normal(n), 700, 0.7) * np.exp(-t * 30) * 0.35
+    return body + dust
+
+
+def whoosh(dur=0.5):
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    curve = 400 + 1900 * np.sin(np.pi * t / dur) ** 1.5
+    w = sweep_bandpass(RNG.standard_normal(n), curve, 1.6)
+    return w * np.sin(np.pi * t / dur) ** 2 * 0.9
+
+
+def sparkle():
+    buf = np.zeros(int(SR * 0.9))
+    for i, f in enumerate((2093.0, 2637.0, 3136.0, 4186.0)):
+        place(buf, _tone([f, f * 2.01], 0.6, 7, [1.0, 0.2]) * 0.22, i * 0.055)
+    return buf
+
+
+def marimba(f, dur=0.45):
+    return _tone([f, f * 3.93, f * 9.5], dur, 9, [1.0, 0.3, 0.06])
 
 
 def chime():
     buf = np.zeros(int(SR * 1.2))
     for i, f in enumerate((1318.5, 1661.2, 1975.5, 2637.0)):
         place(buf, tone(f, 0.9, ((1, 1.0), (2, 0.25), (3, 0.08)), decay=5.5) * 0.28, i * 0.075)
-    # лёгкое «эхо»
     out = buf.copy()
     for d, g in ((0.09, 0.3), (0.17, 0.15)):
         k = int(d * SR)
@@ -201,40 +352,54 @@ def chime():
 
 
 def jungle():
-    # ксилофонный бег по пентатонике — весёлая «тема» обезьянки
-    notes = (523.3, 587.3, 659.3, 784.0, 880.0, 1046.5, 880.0, 1046.5, 1318.5)
-    times = (0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.9, 2.0, 2.15)
-    buf = np.zeros(int(SR * 2.8))
-    for f, at in zip(notes, times):
-        place(buf, tone(f, 0.5, ((1, 1.0), (3.93, 0.35), (9.5, 0.08)), decay=9) * 0.3, at)
-    # «бойнг» в момент ловли банана (~2.25 c от старта эффекта)
-    n = int(SR * 0.45)
-    t = np.arange(n) / SR
-    f = 220 + 160 * np.sin(2 * np.pi * 9 * t) * np.exp(-t * 6) + 120 * t
-    boing = np.sin(2 * np.pi * np.cumsum(f) / SR) * env(n, 0.004, 5) * 0.32
-    place(buf, boing, 2.25)
-    return buf
+    """Звуковая дорожка обезьянки, синхронная с кадрами Lottie (60 fps):
+    топот → пружинка прыжка (к. 64) → удар о стену (к. 82) → отталкивание (к. 90) →
+    «вжух» сальто → «поп» + искры при ловле банана (к. 127) → приземление (к. 146) →
+    прыжок радости и ксилофон → убегает с топотом."""
+    fr = lambda f: f / 60
+    buf = np.zeros(int(SR * 4.6))
+    for i, at in enumerate(np.arange(0.1, fr(62), 0.183)):
+        place(buf, step(1.0 if i % 2 else 0.86) * 0.55, at)
+    place(buf, boing(260, 620) * 0.38, fr(64))
+    place(buf, thud() * 0.45, fr(82))
+    place(buf, step(0.7) * 0.6, fr(82))
+    place(buf, boing(330, 820, 0.3) * 0.36, fr(90))
+    place(buf, whoosh(0.52) * 0.55, fr(92))
+    place(buf, pop() * 0.6, fr(127))
+    place(buf, sparkle(), fr(128))
+    place(buf, thud() * 0.55, fr(146))
+    place(buf, boing(420, 760, 0.25) * 0.25, fr(160))
+    place(buf, step(0.9) * 0.4, fr(184))
+    for i, f in enumerate((783.99, 987.77, 1174.66, 1567.98)):
+        place(buf, marimba(f) * 0.32, fr(150) + i * 0.085)
+    for i, at in enumerate(np.arange(fr(198), fr(258), 0.183)):
+        fade = 1 - i / 8
+        place(buf, step(1.0 if i % 2 else 0.86) * 0.5 * max(0.15, fade), at)
+    return room(buf, 0.15)
 
 
 def whoo():
-    # добрый «ууу» — мягко, без страшилок (0+/6+)
-    n = int(SR * 1.5)
-    t = np.arange(n) / SR
-    glide = 380 + 140 * np.sin(np.pi * t / 1.5) + 8 * np.sin(2 * np.pi * 5.5 * t)
-    s = np.sin(2 * np.pi * np.cumsum(glide) / SR) + 0.3 * np.sin(4 * np.pi * np.cumsum(glide) / SR)
-    shape = np.sin(np.pi * np.clip(t / 1.5, 0, 1)) ** 1.5
-    wind = np.convolve(RNG.standard_normal(n), np.ones(40) / 40, mode="same") * 0.6
-    return (s * 0.22 + wind * 0.12) * shape
+    """Добрые призраки: двухголосое «у-у-у» с вибрато, дыхание тумана и искорки."""
+    dur = 1.9
+    a = voice(250, 330, dur, "u", vibrato=5, vib_depth=0.06, breath=0.08, attack=0.35, release=0.6)
+    b = voice(375, 470, dur - 0.2, "o", vibrato=5.5, vib_depth=0.06, breath=0.08, attack=0.4, release=0.6)
+    buf = np.zeros(int(SR * 2.3))
+    place(buf, a * 0.32, 0.0)
+    place(buf, b * 0.2, 0.18)
+    n = len(buf)
+    air = biquad_bandpass(RNG.standard_normal(n), 900, 0.8) * 0.06 * np.sin(np.pi * np.arange(n) / n) ** 2
+    buf += air
+    for i, f in enumerate((1568.0, 2093.0, 2637.0)):
+        place(buf, tone(f, 0.5, ((1, 1.0), (2, 0.2)), decay=7) * 0.06, 1.5 + i * 0.12)
+    return buf
 
 
 def giggle():
+    """Хихиканье призрака: «хи-хи-хи»."""
     buf = np.zeros(int(SR * 0.7))
-    for i, f in enumerate((1250, 1150, 1080, 980)):
-        n = int(SR * 0.09)
-        t = np.arange(n) / SR
-        ff = f * (1 + 0.06 * np.sin(2 * np.pi * 30 * t))
-        s = np.sin(2 * np.pi * np.cumsum(ff) / SR) * np.sin(np.pi * t / t[-1]) * 0.3
-        place(buf, s, i * 0.12)
+    for i, f in enumerate((1050, 980, 920, 860)):
+        place(buf, voice(f, f * 0.92, 0.075, "i", vibrato=0.1, vib_depth=0, breath=0.12, attack=0.008, release=0.03) * 0.28,
+              i * 0.11)
     return buf
 
 
@@ -245,6 +410,7 @@ def main():
     save_png(snowflake(160), "snowflake.png")
     save_png(fog(256), "fog.png")
     write_wav("pop.wav", pop())
+    write_wav("bubbles.wav", bubbles())
     write_wav("chime.wav", chime())
     write_wav("jungle.wav", jungle())
     write_wav("whoo.wav", whoo())

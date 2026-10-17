@@ -82,7 +82,16 @@ final class AssetStore {
         return Bundle.main.url(forResource: name, withExtension: ext)
     }
 
+    /// sha256 исходных файлов, встроенных в сборку (Xcode пережимает PNG — по байтам не сверить).
+    private lazy var bundleManifest: [String: String] = {
+        guard let url = Bundle.main.url(forResource: "funlayer-manifest", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return map
+    }()
+
     private func bundleHash(_ url: URL) -> String? {
+        if let h = bundleManifest[url.lastPathComponent] { return h }
         if let h = bundleHashes[url.path] { return h }
         guard let data = try? Data(contentsOf: url) else { return nil }
         let h = Self.hex(SHA256.hash(data: data))

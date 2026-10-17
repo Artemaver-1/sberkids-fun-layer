@@ -85,7 +85,9 @@ struct EffectView: View {
             }
             ForEach(Array(runtime.layers.enumerated()), id: \.offset) { _, layer in
                 if case .lottie(let spec, let url) = layer, let url {
-                    LottieLayerView(url: url, speed: spec.speed)
+                    LottieLayerView(url: url, speed: spec.speed,
+                                    onStart: { [id = runtime.id] in fun.lottieStarted(id) },
+                                    onFinish: { [id = runtime.id] in fun.lottieFinished(id) })
                 }
             }
         }
@@ -105,22 +107,59 @@ struct EffectView: View {
 struct LottieLayerView: UIViewRepresentable {
     let url: URL
     let speed: Double
+    let onStart: @MainActor () -> Void
+    let onFinish: @MainActor () -> Void
 
-    func makeUIView(context: Context) -> LottieAnimationView {
-        let view = LottieAnimationView(animation: LottieAnimation.filepath(url.path))
+    func makeUIView(context: Context) -> Host {
+        let host = Host()
+        host.isUserInteractionEnabled = false
+        host.backgroundColor = .clear
+        // разобранная заранее анимация из кэша; движок mainThread стартует без «разгона»
+        let view = LottieAnimationView(animation: LottieAnimation.filepath(url.path, animationCache: DefaultAnimationCache.sharedCache),
+                                       configuration: LottieConfiguration(renderingEngine: .mainThread))
         view.contentMode = .scaleAspectFill
         view.loopMode = .playOnce
         view.animationSpeed = speed
-        view.backgroundBehavior = .stop
-        view.isUserInteractionEnabled = false
-        view.play()
-        return view
+        view.backgroundBehavior = .pauseAndRestore
+        view.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            view.topAnchor.constraint(equalTo: host.topAnchor),
+            view.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+        ])
+        host.lottie = view
+        host.onStart = onStart
+        host.onFinish = onFinish
+        return host
     }
 
-    func updateUIView(_ uiView: LottieAnimationView, context: Context) {}
+    func updateUIView(_ uiView: Host, context: Context) {}
 
-    static func dismantleUIView(_ uiView: LottieAnimationView, coordinator: ()) {
-        uiView.stop()
+    static func dismantleUIView(_ uiView: Host, coordinator: ()) {
+        uiView.lottie?.stop()
+    }
+
+    /// Запускает анимацию, только когда она реально на экране (а не в момент создания),
+    /// и сообщает о старте и окончании — по ним синхронизируются звук и длительность эффекта.
+    final class Host: UIView {
+        var lottie: LottieAnimationView?
+        var onStart: (@MainActor () -> Void)?
+        var onFinish: (@MainActor () -> Void)?
+        private var started = false
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil, !started, let lottie else { return }
+            started = true
+            layoutIfNeeded()
+            onStart?()
+            lottie.play { [weak self] finished in
+                guard finished else { return }
+                MainActor.assumeIsolated { self?.onFinish?() }
+            }
+        }
     }
 }
 
