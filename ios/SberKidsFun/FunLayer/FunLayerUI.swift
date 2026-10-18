@@ -133,7 +133,7 @@ struct HintSheetView: View {
                 }
                 .padding(.trailing, showRobot ? 100 : 0)   // справа машет робот
 
-                ProgressSlots(found: found, released: config.eggs.count, total: total)
+                ProgressSlots(found: config.eggs.filter { engine.progress.isFound($0.id) }, newest: model.eggId, total: total)
 
                 hintCard(config: config, engine: engine)
 
@@ -261,48 +261,33 @@ struct HintSheetView: View {
     }
 }
 
-/// Прогресс коллекции без спойлеров: найденные — золотые звёзды (по порядку находок, не по пасхалкам),
-/// ненайденные — «?», ещё не выпущенные — замочек. Какие ещё бывают пасхалки, картинки не выдают.
+/// Коллекция без спойлеров: показываем только найденные пасхалки — глянцевые шарики с их иконками.
+/// Ненайденных в ряду нет совсем, сколько осталось — только числом «Найдено N из 4».
 struct ProgressSlots: View {
-    let found: Int
-    let released: Int
+    let found: [Egg]
+    let newest: String
     let total: Int
-
-    private static let gold = LinearGradient(colors: [Color(red: 1, green: 0.93, blue: 0.45), Color(red: 1, green: 0.7, blue: 0.16)],
-                                             startPoint: .top, endPoint: .bottom)
 
     var body: some View {
         VStack(spacing: 10) {
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 HStack(spacing: 14) {
-                    ForEach(0..<total, id: \.self) { i in
-                        let isFound = i < found
-                        let isNewest = i == found - 1
-                        GlossyOrb(size: 58, muted: !isFound) {
-                            if isFound {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 26, weight: .bold))
-                                    .foregroundStyle(Self.gold)
-                                    .shadow(color: Color(red: 1, green: 0.78, blue: 0.2).opacity(isNewest ? 0.9 : 0.5), radius: isNewest ? 6 : 3)
-                                    .scaleEffect(isNewest ? 1 + 0.08 * sin(t * 3.2) : 1)
-                            } else if i < released {
-                                Text("?").font(FunStyle.rounded(24, .heavy)).foregroundColor(FunStyle.violet.opacity(0.5))
-                            } else {
-                                Image(systemName: "lock.fill").font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(FunStyle.violet.opacity(0.45))
-                            }
+                    ForEach(found, id: \.id) { egg in
+                        GlossyOrb(size: 60) {
+                            EggIcon(pictogram: egg.pictogram).padding(14)
                         }
+                        .scaleEffect(egg.id == newest ? 1 + 0.04 * sin(t * 3.2) : 1)
                     }
                 }
             }
-            Text("Найдено \(found) из \(total)")
+            Text("Найдено \(found.count) из \(total)")
                 .font(FunStyle.rounded(14, .semibold))
                 .foregroundColor(FunStyle.secondary)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Найдено \(found) из \(total)")
+        .accessibilityLabel("Найдено \(found.count) из \(total)")
     }
 }
 
