@@ -76,6 +76,7 @@ public enum TriggerKind: String, Sendable, CaseIterable {
     case tapSequence    // N быстрых нажатий по элементу (как «режим разработчика» на Android)
     case spiral         // нарисовать пальцем спираль (≥ 2 витков, радиус меняется)
     case circles        // покрутить пальцем по экрану 2–3 круга одним движением
+    case hold           // зажать элемент (аватарку) и держать N секунд
 }
 
 public struct Trigger: Sendable, Equatable {
@@ -86,6 +87,15 @@ public struct Trigger: Sendable, Equatable {
     public var flip = FlipParams()
     public var tap = TapParams()
     public var spiral = SpiralParams()
+    public var hold = HoldParams()
+}
+
+public struct HoldParams: Sendable, Equatable {
+    public var target = "profile.avatar"
+    public var duration: TimeInterval = 5
+    /// Первые секунды ничего не показываем — обычное нажатие никто не заметит.
+    public var quiet: TimeInterval = 1
+    public init() {}
 }
 
 public struct SpiralParams: Sendable, Equatable {

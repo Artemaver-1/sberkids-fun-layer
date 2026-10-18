@@ -18,7 +18,7 @@
 |---|----------|-------|---------|
 | 1 | Мыльные пузыри (12 крупных, можно лопать, 5 % «золотые») | Главный | тряска |
 | 2 | Обезьянка-паркурщик (Lottie: бег → прыжок от края экрана → сальто → ловит банан) | Контент | потянуть ленту вниз и держать 0,5 с |
-| 3 | Призраки в тумане (смотрят на палец, тают от касания) | Профиль | 2–3 круга пальцем одним движением, проверка при отрыве пальца (`circles` → `SpiralDetector` без требования спирали); ладонь, «экраном вниз», спираль и след за пальцем убраны |
+| 3 | Призраки в тумане (смотрят на палец, тают от касания) | Профиль | зажать аватарку 5 с (`hold`, `HoldDetector`; приложение шлёт `reportHold` из long-press на аватарке). Первая секунда — тишина, потом туман с глазками у пальца и «тук» каждую секунду. Ладонь, «экраном вниз», спираль и круги убраны из конфигов |
 | 4 | Цех роботов (интерфейс отъезжает, внутри трёхэтажный цех; робот жмёт красную кнопку — интерфейс влетает обратно с ударом) | Настройки | 7 тапов по «Версия приложения» |
 | 5 | не будет — всего 4 секрета (`announcedTotal: 4`) | — | — |
 
@@ -26,7 +26,7 @@
 
 ## Состояние (всё работает на iPhone 14 пользователя)
 
-- `ios/FunLayerCore` — ядро на Swift (только Foundation): конфиг + валидатор с лимитами, детекторы (Shake, PullHold, Palm, FaceDownFlip), EggEngine, физика (ParticleField, GhostField). **29 тестов проходят**:
+- `ios/FunLayerCore` — ядро на Swift (только Foundation): конфиг + валидатор с лимитами, детекторы (Shake, PullHold, Hold, TapSequence, Spiral/Circles, Palm, FaceDownFlip), EggEngine, физика (ParticleField, GhostField). **37 тестов проходят**:
   ```bash
   cd ios/FunLayerCore && F=/Library/Developer/CommandLineTools/Library/Developer/Frameworks; L=/Library/Developer/CommandLineTools/Library/Developer/usr/lib; DEVELOPER_DIR=/Library/Developer/CommandLineTools swift test -Xswiftc -F$F -Xlinker -F$F -Xlinker -rpath -Xlinker $F -Xlinker -rpath -Xlinker $L
   ```
@@ -50,7 +50,7 @@ xcrun devicectl device process launch --console --terminate-existing --device <U
 ```
 
 - Команда подписи — Personal Team пользователя (DEVELOPMENT_TEAM в pbxproj). На новой машине/аккаунте выбрать команду в Xcode → Signing & Capabilities.
-- Аргументы запуска (передаются **только с `--console`**): `-funForce bubbles|monkey|ghosts`, `-funReset`, `-funPreset config-winter`, `-tab main|content|piggy|tasks`, `-push profile|history|…`, `-settings`.
+- Аргументы запуска (передаются **только с `--console`**): `-funForce bubbles|monkey|ghosts|robots`, `-funHold profile.avatar`, `-funReset`, `-funPreset config-winter`, `-tab main|content|piggy|tasks`, `-push profile|history|…`, `-settings`.
 - Скриншот: `xcrun devicectl device capture screenshot --device <UDID> --destination x.png` (первые секунды после запуска бывает старый снимок — ждать ~9 с; запись экрана недоступна).
 - Лог `[FunLayer] …` с таймингами (`+N ms`) — только в Debug.
 - Скрытое меню: Профиль → вкладка «Настройки» → долгое нажатие на «Версия приложения» внизу.
@@ -59,7 +59,9 @@ xcrun devicectl device process launch --console --terminate-existing --device <U
 
 - Lottie: у последнего ключа не должно быть `i/o`; при сжатии ключей сохранять границы постоянных участков (иначе «расползаются» скачки).
 - SwiftUI-геометрия в ScrollView на iOS 27 не приходит при прокрутке → перетяг читается KVO на `UIScrollView.contentOffset` (`PullReader`). При удержании палец неподвижен → слой сам «тикает».
-- Ладонь iOS видит как одно касание радиусом 36–60 pt и часто отменяет (palm rejection) → основной триггер призраков — экраном вниз.
+- Ладонь iOS видит как одно касание радиусом 36–60 pt и часто отменяет (palm rejection); «экраном вниз» неочевидно; круги/спираль ненадёжны → призраки — удержание аватарки 5 с.
+- Lottie через SwiftUI (`UIViewRepresentable`) вставлялась на 2–3,5 с позже, пока палец держал ленту, и страховочный таймер обрывал обезьяну в воздухе → персонажи теперь в UIKit-слое `lottieStage` под SwiftUI-оверлеем, старт в ту же миллисекунду. Сцена роботов стартует по `onAppear` панели-снимка.
+- UI-тесты `ios/SberKidsFunUITests` гоняют реальные жесты на iPhone (`press(forDuration:)`, `press(…thenDragTo:…thenHoldForDuration:)`); `-funHold profile.avatar` — имитация удержания аргументом запуска.
 - Датчик приближения на iPhone гасит экран — не используем; датчика света в публичном API нет.
 - Figma MCP недоступен (у пользователя view-seat, лимит 6 вызовов/мес) — работали с экспортом PNG 2x.
 

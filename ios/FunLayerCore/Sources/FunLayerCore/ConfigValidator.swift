@@ -201,6 +201,7 @@ public enum ConfigValidator {
         if let v = t.holdMs {
             let s = clamp(Double(v) / 1000, 0.3...4)
             trig.pull.hold = s; trig.palm.hold = s
+            trig.hold.duration = clamp(Double(v) / 1000, 1...10)
         }
         if let v = t.minTouches { trig.palm.minTouches = max(2, min(v, 10)) }
         if let v = t.minRadius { trig.palm.minRadius = clamp(v, 10...120) }
@@ -213,7 +214,7 @@ public enum ConfigValidator {
         if let v = t.minDurationMs { trig.spiral.minDuration = clamp(Double(v) / 1000, 0.2...3) }
         if let v = t.maxDurationMs { trig.spiral.maxDuration = clamp(Double(v) / 1000, 1...10) }
         if kind == .circles { trig.spiral.minRadiusTrend = 0 }   // круги: монотонность радиуса не нужна
-        if let v = t.target, !v.isEmpty { trig.tap.target = v }
+        if let v = t.target, !v.isEmpty { trig.tap.target = v; trig.hold.target = v }
         if let v = t.taps { trig.tap.taps = max(2, min(v, 15)) }
         if let v = t.maxGapMs { trig.tap.maxGap = clamp(Double(v) / 1000, 0.2...2) }
         return trig

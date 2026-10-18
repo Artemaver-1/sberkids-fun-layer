@@ -10,7 +10,7 @@ import kotlin.math.min
 // Перенос ConfigValidator.swift + Model.swift. Парсер — org.json, он входит в Android SDK:
 // новых зависимостей нет. Тот же JSON, те же лимиты, те же правила, что на iOS.
 
-enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip"), TAP_SEQUENCE("tapSequence"), SPIRAL("spiral");
+enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip"), TAP_SEQUENCE("tapSequence"), SPIRAL("spiral"), HOLD("hold");
     companion object { fun of(s: String?) = entries.firstOrNull { it.raw == s } }
 }
 
@@ -22,6 +22,7 @@ data class Trigger(
     val flip: FlipParams = FlipParams(),
     val tap: TapParams = TapParams(),
     val spiral: SpiralParams = SpiralParams(),
+    val hold: HoldParams = HoldParams(),
 )
 
 /** «Интерфейс отъезжает и открывает сцену» — снимок экрана сдвигается и с ударом возвращается. */
@@ -204,6 +205,10 @@ object ConfigValidator {
                 target = o.optString("target", "settings.version").ifEmpty { "settings.version" },
                 taps = o.optInt("taps", 7).coerceIn(2, 15),
                 maxGap = clamp(o.optDouble("maxGapMs", 800.0) / 1000, 0.2, 2.0),
+            ),
+            hold = HoldParams(
+                target = o.optString("target", "profile.avatar").ifEmpty { "profile.avatar" },
+                duration = if (o.has("holdMs")) clamp(o.optDouble("holdMs") / 1000, 1.0, 10.0) else 5.0,
             ),
         )
     }

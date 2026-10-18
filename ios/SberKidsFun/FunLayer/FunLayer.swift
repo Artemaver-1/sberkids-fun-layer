@@ -59,6 +59,9 @@ final class FunLayer: ObservableObject {
     @Published private(set) var progressVersion = 0
     /// Подсказка во время серии тапов: «Осталось 3…»
     @Published private(set) var tapHint: String?
+    /// Удержание аватарки: 0…1 — вокруг пальца сгущается туман, из него выглядывают глазки.
+    @Published private(set) var holdProgress: Double = 0
+    @Published private(set) var holdPoint: CGPoint = .zero
 
     private(set) var engine: EggEngine?
     let loader: ConfigLoader
@@ -73,12 +76,20 @@ final class FunLayer: ObservableObject {
     private let spiral = SpiralDetector()
 
     private var tapEnabled = false
+    private let hold = HoldDetector()
+    private var holdEnabled = false
+    private var holdTicker: Task<Void, Never>?
+    private var holdBeats = 0
     private var tapHintTask: Task<Void, Never>?
     private weak var appWindow: UIWindow?
     private var lastPullDistance = 0.0
     private var maxPullSeen = 0.0
     private var pullTicker: Task<Void, Never>?
     private var overlay: OverlayWindow?
+    /// Lottie-персонажи живут в UIKit-слое под SwiftUI-оверлеем: анимация стартует в ту же миллисекунду,
+    /// что и эффект. Через SwiftUI вставка откладывалась на 2–3 с, пока палец держал ленту.
+    private let lottieStage = UIView()
+    private var lottieViews: [LottieAnimationView] = []
     private var endTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var teaserTask: Task<Void, Never>?
@@ -129,7 +140,19 @@ final class FunLayer: ObservableObject {
         let o = OverlayWindow(windowScene: scene)
         let host = UIHostingController(rootView: OverlayRootView().environmentObject(self))
         host.view.backgroundColor = .clear
-        o.rootViewController = host
+        let root = UIViewController()
+        root.view.backgroundColor = .clear
+        lottieStage.frame = root.view.bounds
+        lottieStage.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        lottieStage.isUserInteractionEnabled = false
+        lottieStage.backgroundColor = .clear
+        root.view.addSubview(lottieStage)
+        root.addChild(host)
+        host.view.frame = root.view.bounds
+        host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        root.view.addSubview(host.view)
+        host.didMove(toParent: root)
+        o.rootViewController = root
         o.windowLevel = UIWindow.Level(rawValue: UIWindow.Level.normal.rawValue + 1)
         o.backgroundColor = .clear
         o.isHidden = false
@@ -156,7 +179,7 @@ final class FunLayer: ObservableObject {
 
     /// Аргументы запуска для автоматической проверки на устройстве:
     /// `-funReset` — сбросить прогресс, `-funForce <id>` — запустить пасхалку через 1,5 с,
-    /// `-funPreset <name>` — встроенный конфиг.
+    /// `-funPreset <name>` — встроенный конфиг, `-funHold <target>` — «зажать» элемент в центре экрана сверху.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
         func value(_ key: String) -> String? {
@@ -168,6 +191,13 @@ final class FunLayer: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 self?.forcePlay(id)
+            }
+        }
+        if let target = value("-funHold") {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                guard let self else { return }
+                self.reportHold(target, .began, at: CGPoint(x: self.overlaySize.width / 2, y: self.safeInsets.top + 150))
             }
         }
     }
@@ -235,6 +265,7 @@ final class FunLayer: ObservableObject {
         pullFraction = 0
         pullHold = 0
         palmReset()
+        holdReset()
         if ScreenPolicy.sensitive.contains(id) {
             // поверх денег ничего не показываем — ни эффектов, ни тостов, ни шторки
             cancelEffect()
@@ -279,6 +310,8 @@ final class FunLayer: ObservableObject {
             pullEnabled = false
             tapEnabled = false
             strokes.isEnabled = false
+            holdEnabled = false
+            holdReset()
             return
         }
         let t = engine.activeTriggers(on: currentScreen, now: Date())
@@ -293,6 +326,74 @@ final class FunLayer: ObservableObject {
         tapEnabled = t[.tapSequence] != nil
         if let p = t[.circles] ?? t[.spiral] { spiral.params = p.spiral }
         strokes.isEnabled = t[.circles] != nil || t[.spiral] != nil
+        if let p = t[.hold] { hold.params = p.hold }
+        holdEnabled = t[.hold] != nil
+        if !holdEnabled { holdReset() }
+    }
+
+    enum HoldPhase { case began, moved, ended }
+
+    /// Приложение сообщает, что элемент зажат пальцем (long-press на аватарке). Отсчёт, туман и запуск — здесь.
+    func reportHold(_ target: String, _ phase: HoldPhase, at point: CGPoint) {
+        switch phase {
+        case .began:
+            guard holdEnabled, effect == nil, sheet == nil, isActive,
+                  hold.began(target: target, time: CACurrentMediaTime()) else { return }
+            holdTicker?.cancel()
+            holdPoint = point
+            holdBeats = 0
+            log("hold began \(target)")
+            holdTicker = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 16_000_000)
+                    guard let self, !Task.isCancelled else { return }
+                    self.holdTick()
+                }
+            }
+        case .moved:
+            if hold.isHolding { holdPoint = point }
+        case .ended:
+            if let t = hold.elapsed(at: CACurrentMediaTime()) { log(String(format: "hold released after %.1f s", t)) }
+            holdReset()
+        }
+    }
+
+    private func holdTick() {
+        guard holdEnabled, effect == nil, sheet == nil else { holdReset(); return }
+        let now = CACurrentMediaTime()
+        let t = hold.elapsed(at: now) ?? 0
+        switch hold.tick(time: now) {
+        case .idle:
+            holdReset()
+            return
+        case .progress(let p):
+            holdProgress = p
+            // каждая секунда — лёгкий «тук», ближе к концу сильнее
+            if Int(t) > holdBeats {
+                holdBeats = Int(t)
+                if t >= hold.params.quiet {
+                    UIImpactFeedbackGenerator(style: p > 0.5 ? .medium : .light).impactOccurred(intensity: 0.5 + 0.5 * p)
+                }
+            }
+            return
+        case .triggered:
+            break
+        }
+        let point = holdPoint
+        holdTicker?.cancel()
+        holdTicker = nil
+        log("hold triggered")
+        trigger(.hold)
+        effect?.lookTarget = point   // призраки сразу смотрят на палец
+        withAnimation(.easeOut(duration: 0.5)) { holdProgress = 0 }
+    }
+
+    private func holdReset() {
+        holdTicker?.cancel()
+        holdTicker = nil
+        hold.ended()
+        guard holdProgress > 0 else { return }
+        withAnimation(.easeOut(duration: 0.3)) { holdProgress = 0 }
     }
 
     /// Приложение сообщает о нажатии на элемент (одна строка в обработчике нажатия).
@@ -471,8 +572,15 @@ final class FunLayer: ObservableObject {
 
         log("runtime ready")
         withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
+        // персонаж стартует сразу; сцену под «отъезжающим» интерфейсом — когда панель-снимок уже на экране
+        if runtime.reveal == nil || runtime.revealSnapshot == nil { startLottie(runtime) }
         updateSensors()
-        if d.trigger == .palm { palm.isEnabled = true }
+        // глаза призраков следят за пальцем: касания читает тот же наблюдатель, что и ладонь
+        let ghostsLook = d.variant.effect.layers.contains { layer in
+            if case .ghosts(let g) = layer { return g.followFinger }
+            return false
+        }
+        if d.trigger == .palm || ghostsLook { palm.isEnabled = true }
         Haptics.play(d.variant.effect.haptic)
         endTask?.cancel()
         if let reveal = runtime.reveal {
@@ -525,6 +633,47 @@ final class FunLayer: ObservableObject {
         }
     }
 
+    /// Панель-снимок появилась (сцена «Цех роботов») — под ней можно запускать анимацию.
+    func revealAppeared(_ id: UUID) {
+        guard let effect, effect.id == id, lottieViews.isEmpty else { return }
+        startLottie(effect)
+    }
+
+    private func startLottie(_ runtime: EffectRuntime) {
+        stopLottie(animated: false)
+        for case .lottie(let spec, let url?) in runtime.layers {
+            let view = LottieAnimationView(animation: LottieAnimation.filepath(url.path, animationCache: DefaultAnimationCache.sharedCache),
+                                           configuration: LottieConfiguration(renderingEngine: .mainThread))
+            view.frame = lottieStage.bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.contentMode = .scaleAspectFill
+            view.loopMode = .playOnce
+            view.animationSpeed = spec.speed
+            view.backgroundBehavior = .pauseAndRestore
+            view.isUserInteractionEnabled = false
+            lottieStage.addSubview(view)
+            lottieViews.append(view)
+            let id = runtime.id
+            view.play { [weak self] finished in
+                guard finished else { return }
+                MainActor.assumeIsolated { self?.lottieFinished(id) }
+            }
+        }
+        if !lottieViews.isEmpty { lottieStarted(runtime.id) }
+    }
+
+    private func stopLottie(animated: Bool) {
+        let views = lottieViews
+        lottieViews.removeAll()
+        guard !views.isEmpty else { return }
+        guard animated else {
+            views.forEach { $0.stop(); $0.removeFromSuperview() }
+            return
+        }
+        UIView.animate(withDuration: 0.2, animations: { views.forEach { $0.alpha = 0 } },
+                       completion: { _ in views.forEach { $0.stop(); $0.removeFromSuperview() } })
+    }
+
     func lottieStarted(_ id: UUID) {
         guard let effect, effect.id == id, let config else { return }
         log("lottie started")
@@ -540,6 +689,8 @@ final class FunLayer: ObservableObject {
     }
 
     private func finishEffect() {
+        // под «отъезжающим» интерфейсом сцену убираем мгновенно — панель-снимок исчезает в этот же кадр
+        stopLottie(animated: effect?.reveal == nil)
         effect = nil
         engine?.effectFinished(now: Date())
         updateSensors()
@@ -547,6 +698,7 @@ final class FunLayer: ObservableObject {
 
     func cancelEffect() {
         endTask?.cancel()
+        stopLottie(animated: false)
         if effect != nil {
             effect = nil
             engine?.cancelEffect()

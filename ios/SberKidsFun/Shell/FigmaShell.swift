@@ -32,6 +32,7 @@ enum ShellAction: Equatable {
     case pop
     case profileTab(Int)
     case debug
+    case hold(String)   // зажать и держать — сообщаем слою пасхалок
 }
 
 /// Кликабельная зона в пикселях макета (экспорт 2x).
@@ -88,6 +89,7 @@ enum Screens {
     static let profile = ScreenSpec(image: "screen_profile.jpg", top: Color(hex: 0xD9F9B7), bottom: Color(hex: 0xF1F5F8), hotspots: [
         ScreenSpec.back,
         Hotspot(400, 780, 760, 920, .profileTab(1)),
+        Hotspot(236, 242, 544, 550, .hold("profile.avatar")),   // аватарка Валюши
     ])
     static let settings = ScreenSpec(image: "screen_settings.jpg", top: Color(hex: 0xD9F9B7), bottom: Color(hex: 0xF1F5F8), hotspots: [
         ScreenSpec.back,
@@ -165,7 +167,12 @@ struct FigmaScreen: View {
             .contentShape(Rectangle())
             .frame(width: spot.rect.width * scale, height: spot.rect.height * scale)
             .offset(x: spot.rect.minX * scale, y: spot.rect.minY * scale)
-        if spot.action == .debug {
+        if case .hold(let target) = spot.action {
+            HoldArea(target: target)
+                .frame(width: spot.rect.width * scale, height: spot.rect.height * scale)
+                .padding(.leading, spot.rect.minX * scale)
+                .padding(.top, spot.rect.minY * scale)
+        } else if spot.action == .debug {
             // «Версия приложения»: быстрые тапы — пасхалка с роботами, долгое нажатие — меню разработчика.
             // В СберKids это одна строка в обработчике нажатия: FunLayer.shared.reportTap("settings.version")
             area.onTapGesture { FunLayer.shared.reportTap("settings.version") }
@@ -213,5 +220,58 @@ struct FigmaTabBar: View {
 final class PullModel: ObservableObject {
     func handle(_ y: CGFloat) {
         FunLayer.shared.reportPull(distance: Double(max(0, y)))
+    }
+}
+
+/// Зона «зажми и держи» (аватарка). В СберKids — long-press на аватарке и одна строка:
+/// FunLayer.shared.reportHold("profile.avatar", .began / .moved / .ended, at: точка в окне).
+/// Через 0,25 с удержания прокрутка экрана блокируется, палец может немного «гулять» — отсчёт не сбрасывается.
+struct HoldArea: UIViewRepresentable {
+    let target: String
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let press = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handle(_:)))
+        press.minimumPressDuration = 0.25
+        press.allowableMovement = 24
+        view.addGestureRecognizer(press)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        context.coordinator.target = target
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(target: target) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var target: String
+        private var origin: CGPoint = .zero
+        private var active = false
+
+        init(target: String) { self.target = target }
+
+        @objc func handle(_ press: UILongPressGestureRecognizer) {
+            let point = press.location(in: nil)
+            switch press.state {
+            case .began:
+                origin = point
+                active = true
+                FunLayer.shared.reportHold(target, .began, at: point)
+            case .changed:
+                guard active else { return }
+                if hypot(point.x - origin.x, point.y - origin.y) > 70 {
+                    active = false   // палец уехал с аватарки — отсчёт заново
+                    FunLayer.shared.reportHold(target, .ended, at: point)
+                } else {
+                    FunLayer.shared.reportHold(target, .moved, at: point)
+                }
+            default:
+                if active { FunLayer.shared.reportHold(target, .ended, at: point) }
+                active = false
+            }
+        }
     }
 }

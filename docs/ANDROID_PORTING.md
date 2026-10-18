@@ -9,7 +9,7 @@
 | Swift | Kotlin | Что внутри |
 |-------|--------|------------|
 | `ConfigDTO.swift`, `Model.swift`, `ConfigValidator.swift` | `Config.kt` | разбор JSON (org.json из Android SDK), те же лимиты и правила |
-| `Detectors.swift` | `Detectors.kt` | тряска, удержание ленты, ладонь, переворот |
+| `Detectors.swift` | `Detectors.kt` | тряска, удержание ленты, удержание элемента, серия нажатий, круги, ладонь, переворот |
 | `EggEngine.swift`, `Progress.swift` | `Engine.kt` | выбор пасхалки, кулдаун, веса, прогресс, подсказки, SplitMix64 |
 | `Simulation.swift` | `Simulation.kt` | физика пузырей, капель, призраков, огибающая |
 
@@ -21,7 +21,7 @@
 |-----|---------|
 | `OverlayWindow` (отдельный `UIWindow`, `hitTest` → `nil`) | `Box(Modifier.fillMaxSize())` поверх `NavHost` в корневом `setContent`; `pointerInput` пропускает событие, если не попали в пузырь (`awaitPointerEventScope`, без `consume()`) |
 | `CMMotionManager.deviceMotion` (userAcceleration, gravity) | `SensorManager` + `TYPE_LINEAR_ACCELERATION` и `TYPE_GRAVITY`, `SENSOR_DELAY_GAME`; регистрируются в `DisposableEffect` только на нужном экране |
-| `PalmGestureRecognizer` на окне | `Activity.dispatchTouchEvent`: `MotionEvent.pointerCount`, `getTouchMajor(i)`; при `ARMED` — `ACTION_CANCEL` дочерним вью, чтобы ладонь не нажала кнопку |
+| `UILongPressGestureRecognizer` на аватарке → `reportHold` | `Modifier.pointerInput { detectTapGestures(onPress = { reportHold(BEGAN); tryAwaitRelease(); reportHold(ENDED) }) }` на аватарке |
 | SwiftUI `Canvas` + `TimelineView(.animation)` | Compose `Canvas` + `LaunchedEffect { while(true) withFrameNanos { … } }` |
 | `GraphicsContext.draw(image)` | `DrawScope.drawImage` / `withTransform { rotate; scale }` |
 | `LottieAnimationView` | `LottieAnimation(LottieCompositionSpec.File(path))` — Lottie уже в стеке |
@@ -33,7 +33,7 @@
 
 ## Датчики на Android
 
-Призраки вызываются переворотом «экраном вниз» — нужен только акселерометр, он есть в любом телефоне. `TYPE_GRAVITY` — программный датчик поверх акселерометра; если его нет (очень дешёвые модели без гироскопа), гравитация берётся низкочастотным фильтром из `TYPE_ACCELEROMETER`. Датчики света и приближения не используются — их наличие и качество на Android не гарантированы.
+Призраки вызываются удержанием аватарки — обычное касание, датчики не нужны. Датчики нужны только пузырям (тряска): `TYPE_LINEAR_ACCELERATION`; если его нет (очень дешёвые модели без гироскопа), ускорение берётся из `TYPE_ACCELEROMETER` с вычитанием гравитации фильтром. Датчики света и приближения не используются — их наличие и качество на Android не гарантированы.
 
 ## Разрешения
 

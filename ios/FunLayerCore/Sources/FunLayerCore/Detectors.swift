@@ -304,6 +304,44 @@ public final class TapSequenceDetector {
     }
 }
 
+// MARK: - Зажать элемент и держать (аватарка)
+
+/// Элемент зажат пальцем `duration` секунд — срабатывание, один раз за удержание.
+/// Первые `quiet` секунд прогресс 0: обычное нажатие или короткий long-press никто не заметит.
+/// Приложение сообщает о начале и конце удержания строкой-идентификатором элемента.
+public final class HoldDetector {
+    public enum Output: Equatable { case idle, progress(Double), triggered }
+
+    public var params: HoldParams
+    private var start: Double?
+
+    public init(params: HoldParams = HoldParams()) { self.params = params }
+
+    public var isHolding: Bool { start != nil }
+
+    /// Начало удержания; false — не тот элемент.
+    @discardableResult
+    public func began(target: String, time: Double) -> Bool {
+        guard target == params.target else { return false }
+        start = time
+        return true
+    }
+
+    public func ended() { start = nil }
+
+    public func elapsed(at time: Double) -> Double? { start.map { time - $0 } }
+
+    public func tick(time: Double) -> Output {
+        guard let start else { return .idle }
+        let t = time - start
+        if t >= params.duration {
+            self.start = nil
+            return .triggered
+        }
+        return .progress(min(1, max(0, (t - params.quiet) / max(0.1, params.duration - params.quiet))))
+    }
+}
+
 // MARK: - Экраном вниз и обратно (запасной триггер для «ладони»)
 
 /// Вход — z-компонента гравитации: −1 экран смотрит вверх, +1 — вниз

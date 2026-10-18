@@ -50,6 +50,7 @@
 | `circles` | `minTurns`, `minDiameter`, `minDurationMs`, `maxDurationMs`, `consistency` | 1,9 оборота, 100 pt, 500–4000 мс, вращение в одну сторону ≥ 85 % |
 | `spiral` | `minTurns` (1,5–5), `minDiameter` (pt), `minDurationMs`, `maxDurationMs` | 2 витка, 120 pt, 600–4000 мс; плюс вращение в одну сторону ≥ 85 % и смена радиуса ≥ 35 % |
 | `tapSequence` | `target` (элемент, о нажатиях на который сообщает приложение), `taps` (2–15), `maxGapMs` | `settings.version`, 7, 800 мс |
+| `hold` | `target` (элемент, об удержании которого сообщает приложение), `holdMs` (1000–10000) | `profile.avatar`, 5000 мс; первая секунда без визуального отклика |
 
 ### Эффект
 

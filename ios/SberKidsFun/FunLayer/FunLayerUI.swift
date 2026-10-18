@@ -426,6 +426,23 @@ struct PictogramView: View {
                     .offset(x: 26 * (1 - cover), y: 4)
                     .opacity(0.3 + 0.7 * cover)
             }
+        case "gesture.hold":
+            // палец прижат к аватарке, вокруг набирается кольцо-таймер
+            let cycle = t.truncatingRemainder(dividingBy: 3.2) / 3.2
+            let fill = min(1, cycle / 0.8)
+            ZStack {
+                Circle().stroke(FunStyle.violet.opacity(0.2), lineWidth: 3).frame(width: 38, height: 38)
+                Circle().trim(from: 0, to: fill)
+                    .stroke(FunStyle.violet, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 38, height: 38)
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 22)).foregroundColor(FunStyle.violet.opacity(0.75))
+                Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 18)).foregroundColor(Color(red: 0.95, green: 0.72, blue: 0.5))
+                    .offset(x: 8, y: 12)
+                    .scaleEffect(cycle < 0.8 ? 0.94 : 1)
+            }
         case "gesture.circles":
             // палец кружит по экрану
             let a = t * 2 * Double.pi * 0.9
@@ -511,6 +528,7 @@ struct PictogramView: View {
         case "gesture.tap7": return "Нажми 7 раз"
         case "gesture.spiral": return "Нарисуй спираль"
         case "gesture.circles": return "Покрути пальцем 2–3 круга"
+        case "gesture.hold": return "Зажми аватарку на 5 секунд"
         case "screen.settings": return "Настройки"
         default: return ""
         }
@@ -623,5 +641,62 @@ struct PalmDarknessView: View {
         }
         .allowsHitTesting(false)
         .animation(.easeOut(duration: 0.2), value: armed)
+    }
+}
+
+// MARK: - Удержание аватарки: туман сгущается вокруг пальца
+
+/// Пока ребёнок держит аватарку, вокруг пальца клубится туман, а ближе к концу из него выглядывают глазки.
+/// Первую секунду ничего не видно — обычное нажатие никто не заметит.
+struct HoldFogView: View {
+    let progress: Double
+    let point: CGPoint
+
+    private static let colors: [Color] = [
+        Color(red: 0.56, green: 0.49, blue: 1), Color(red: 0.35, green: 0.85, blue: 0.9), Color(red: 0.77, green: 0.61, blue: 1),
+    ]
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { ctx, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let p = progress
+                let ease = p * p * (3 - 2 * p)
+                ctx.fill(Path(CGRect(origin: .zero, size: size)),
+                         with: .color(Color(red: 0.08, green: 0.06, blue: 0.2).opacity(0.34 * ease)))
+                for i in 0..<8 {
+                    let k = Double(i)
+                    let a = k / 8 * 2 * .pi + t * (0.32 + 0.06 * Double(i % 3))
+                    let orbit = (26 + 110 * ease) * (0.65 + 0.35 * sin(t * 0.8 + k * 1.7))
+                    let c = CGPoint(x: point.x + orbit * cos(a), y: point.y + orbit * sin(a) * 0.85)
+                    let r = 46 + 104 * ease
+                    let col = Self.colors[i % 3]
+                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
+                             with: .radialGradient(Gradient(colors: [col.opacity(0.42 * ease), col.opacity(0)]),
+                                                   center: c, startRadius: 0, endRadius: r))
+                }
+                // глазки выглядывают из тумана и моргают
+                guard p > 0.45 else { return }
+                let eyesAlpha = min(1, (p - 0.45) / 0.35)
+                for j in 0..<3 {
+                    let k = Double(j)
+                    let a = -2.2 + k * 2.1 + 0.15 * sin(t * 0.7 + k)
+                    let d = 92 + 40 * ease + 6 * sin(t * 1.3 + k * 2)
+                    let c = CGPoint(x: point.x + d * cos(a), y: point.y + d * sin(a))
+                    let blink = sin(t * 1.9 + k * 2.4) > 0.94 ? 0.15 : 1.0
+                    var e = ctx
+                    e.opacity = eyesAlpha * (j == 2 ? max(0, (p - 0.7) / 0.3) : 1)
+                    for dx in [-9.0, 9.0] {
+                        let eye = CGRect(x: c.x + dx - 5, y: c.y - 7 * blink, width: 10, height: 14 * blink)
+                        e.fill(Path(ellipseIn: eye.insetBy(dx: -3, dy: -3)), with: .color(Color.white.opacity(0.35)))
+                        e.fill(Path(ellipseIn: eye), with: .color(.white))
+                        let look = CGPoint(x: (point.x - c.x) / max(1, d) * 1.6, y: (point.y - c.y) / max(1, d) * 2.2)
+                        let pupil = CGRect(x: c.x + dx - 2.6 + look.x, y: c.y - 3.6 * blink + look.y, width: 5.2, height: 7.2 * blink)
+                        e.fill(Path(ellipseIn: pupil), with: .color(Color(red: 0.14, green: 0.1, blue: 0.3)))
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

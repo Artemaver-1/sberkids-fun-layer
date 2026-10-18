@@ -252,6 +252,25 @@ struct DetectorTests {
         #expect(d.feed(target: "settings.version", time: 12) == .progress(done: 1, left: 6))
     }
 
+    @Test("Удержание аватарки: короткое нажатие не срабатывает, 5 секунд — срабатывает один раз")
+    func holdOnAvatar() {
+        let d = HoldDetector()
+        #expect(d.began(target: "settings.version", time: 0) == false)
+        #expect(d.tick(time: 1) == .idle)
+
+        #expect(d.began(target: "profile.avatar", time: 0))
+        #expect(d.tick(time: 0.8) == .progress(0))          // первая секунда — тишина
+        #expect(d.tick(time: 3) == .progress(0.5))
+        d.ended()                                            // отпустил на 3-й секунде
+        #expect(d.tick(time: 6) == .idle)
+
+        d.began(target: "profile.avatar", time: 10)
+        #expect(d.tick(time: 14.9) != .triggered)
+        #expect(d.tick(time: 15) == .triggered)
+        #expect(d.tick(time: 16) == .idle)                   // палец ещё держит — второй раз не срабатывает
+        #expect(!d.isHolding)
+    }
+
     func spiral(turns: Double, r0: Double, r1: Double, duration: Double = 2, cx: Double = 200, cy: Double = 400) -> [StrokePoint] {
         let n = 160
         return (0..<n).map { i in
@@ -346,7 +365,9 @@ struct EngineTests {
         let now = Date()
         #expect(Set(e.activeTriggers(on: "main", now: now).keys) == [.shake])
         #expect(Set(e.activeTriggers(on: "content", now: now).keys) == [.pullHold])
-        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.circles])
+        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.hold])
+        #expect(e.activeTriggers(on: "profile", now: now)[.hold]?.hold.duration == 5)
+        #expect(e.activeTriggers(on: "profile", now: now)[.hold]?.hold.target == "profile.avatar")
         #expect(Set(e.activeTriggers(on: "settings", now: now).keys) == [.tapSequence])
         #expect(e.activeTriggers(on: "transfer", now: now).isEmpty)
         #expect(e.activeTriggers(on: "piggy", now: now).isEmpty)
@@ -376,7 +397,7 @@ struct EngineTests {
     func allFound() throws {
         let e = try engine()
         let t = Date()
-        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.circles, "profile"), (.tapSequence, "settings")] {
+        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.hold, "profile"), (.tapSequence, "settings")] {
             #expect(e.handle(kind, on: screen, now: t) != nil)
             e.effectFinished(now: t)
         }

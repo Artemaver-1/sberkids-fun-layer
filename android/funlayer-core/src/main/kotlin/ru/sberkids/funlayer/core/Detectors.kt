@@ -24,6 +24,31 @@ data class SpiralParams(val minTurns: Double = 2.0, val minDiameter: Double = 12
 
 data class StrokePoint(val x: Double, val y: Double, val t: Double)
 
+data class HoldParams(val target: String = "profile.avatar", val duration: Double = 5.0, val quiet: Double = 1.0)
+
+/** Зажать элемент (аватарку) и держать (перенос HoldDetector.swift). На Android — onTouch ACTION_DOWN/UP у аватарки. */
+class HoldDetector(var params: HoldParams = HoldParams()) {
+    sealed interface Output { data object Idle : Output; data class Progress(val value: Double) : Output; data object Triggered : Output }
+
+    private var start: Double? = null
+    val isHolding get() = start != null
+
+    fun began(target: String, time: Double): Boolean {
+        if (target != params.target) return false
+        start = time
+        return true
+    }
+
+    fun ended() { start = null }
+
+    fun tick(time: Double): Output {
+        val s = start ?: return Output.Idle
+        val t = time - s
+        if (t >= params.duration) { start = null; return Output.Triggered }
+        return Output.Progress(((t - params.quiet) / maxOf(0.1, params.duration - params.quiet)).coerceIn(0.0, 1.0))
+    }
+}
+
 /** Спираль одним штрихом (перенос SpiralDetector.swift): ≥ N витков, вращение в одну сторону, радиус меняется. */
 class SpiralDetector(var params: SpiralParams = SpiralParams()) {
     sealed interface Result {
