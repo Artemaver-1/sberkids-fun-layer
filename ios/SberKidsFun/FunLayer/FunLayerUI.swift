@@ -20,7 +20,7 @@ enum FunStyle {
     }
 }
 
-// MARK: - Тост «Пасхалка найдена! 1 из 5»
+// MARK: - Тост «Пасхалка найдена! 1 из 4»
 
 struct ToastView: View {
     let model: ToastModel

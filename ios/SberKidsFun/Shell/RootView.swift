@@ -57,7 +57,12 @@ final class AppRouter: ObservableObject {
         case .push(let s): push(s)
         case .pop: pop()
         case .profileTab(let i): withAnimation(.easeInOut(duration: 0.2)) { profileTab = i }
-        case .debug: push(.debug)
+        case .debug:
+            #if DEBUG
+            push(.debug)   // меню разработчика (пресеты, CDN) — только в отладочной сборке для демо
+            #else
+            break
+            #endif
         case .hold: break   // удержание обрабатывает слой пасхалок
         }
     }
