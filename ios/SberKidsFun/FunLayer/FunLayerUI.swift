@@ -106,23 +106,30 @@ struct HintSheetView: View {
             let egg = config.egg(id: model.eggId)
             let found = engine.foundCount
             let total = engine.total
-            VStack(spacing: 16) {
-                Capsule().fill(Color.black.opacity(0.12)).frame(width: 40, height: 5).padding(.top, 8)
+            VStack(alignment: .leading, spacing: 18) {
+                Capsule().fill(Color.black.opacity(0.12)).frame(width: 40, height: 5)
+                    .frame(maxWidth: .infinity).padding(.top, 8)
 
-                HStack(spacing: 14) {
-                    EggBadge(pictogram: egg?.pictogram ?? "sparkles", size: 64)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(config.texts.sheetTitle).font(FunStyle.rounded(24, .heavy)).foregroundColor(FunStyle.ink)
-                        if let egg { Text(egg.title).font(FunStyle.rounded(16, .semibold)).foregroundColor(FunStyle.violet) }
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 14) {
+                        EggBadge(pictogram: egg?.pictogram ?? "sparkles", size: 64)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(config.texts.sheetTitle)
+                                .font(FunStyle.rounded(26, .heavy)).foregroundColor(FunStyle.ink)
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                            if let egg {
+                                Text(egg.title).font(FunStyle.rounded(17, .semibold)).foregroundColor(FunStyle.violet)
+                                    .lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                        }
                     }
-                    Spacer()
+                    Text(Template.render(config.texts.sheetIntro, ["total": "\(total)", "n": "\(found)"]))
+                        .font(FunStyle.rounded(15.5))
+                        .foregroundColor(FunStyle.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.trailing, -14)
                 }
-
-                Text(Template.render(config.texts.sheetIntro, ["total": "\(total)", "n": "\(found)"]))
-                    .font(FunStyle.rounded(16))
-                    .foregroundColor(FunStyle.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(.trailing, 100)   // справа машет маскот
 
                 ProgressSlots(eggs: config.eggs, total: total, isFound: { engine.progress.isFound($0) })
 
@@ -131,113 +138,145 @@ struct HintSheetView: View {
                 HStack(spacing: 12) {
                     Button { fun.share() } label: {
                         Label(config.texts.shareButton, systemImage: "square.and.arrow.up")
-                            .font(FunStyle.rounded(16, .semibold))
+                            .font(FunStyle.rounded(17, .semibold))
                             .foregroundColor(FunStyle.ink)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(FunStyle.card))
+                            .frame(maxWidth: .infinity, minHeight: 56)
+                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(Color(red: 0.95, green: 0.95, blue: 0.98)))
                     }
                     Button { close() } label: {
                         Text(config.texts.closeButton)
-                            .font(FunStyle.rounded(17, .bold))
+                            .font(FunStyle.rounded(18, .bold))
                             .foregroundColor(FunStyle.ink)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(FunStyle.primaryGradient))
+                            .frame(maxWidth: .infinity, minHeight: 56)
+                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(FunStyle.primaryGradient))
                     }
                 }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, fun.safeInsets.bottom + 14)
-            .background(
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.12), radius: 20, y: -4)
-                    .ignoresSafeArea(edges: .bottom)
-            )
+            .background(sheetBackground)
+            .overlay(alignment: .topTrailing) {
+                RobotMascot()
+                    .frame(width: 130, height: 152)
+                    .padding(.top, 12)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
     }
+
+    /// Белая шторка с лавандовым сиянием в углу, где машет маскот.
+    private var sheetBackground: some View {
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+            .fill(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .fill(RadialGradient(colors: [Color(red: 0.86, green: 0.84, blue: 1).opacity(0.85), Color(red: 0.9, green: 0.94, blue: 1).opacity(0.35), .clear],
+                                         center: .topTrailing, startRadius: 10, endRadius: 330))
+            )
+            .shadow(color: .black.opacity(0.12), radius: 20, y: -4)
+            .ignoresSafeArea(edges: .bottom)
+    }
+
+    private static let cardFill = LinearGradient(
+        colors: [Color(red: 0.93, green: 0.92, blue: 1.0), Color(red: 0.90, green: 0.95, blue: 1.0)],
+        startPoint: .topLeading, endPoint: .bottomTrailing)
 
     @ViewBuilder
     private func hintCard(config: FunConfig, engine: EggEngine) -> some View {
         let card = engine.nextHint(now: Date())
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             switch card.kind {
             case .next(let next):
-                Text(config.texts.nextHintTitle)
-                    .font(FunStyle.rounded(14, .bold))
-                    .foregroundColor(FunStyle.violet)
-                    .textCase(.uppercase)
-                PictogramRow(keys: next.hint.pictograms)
-                Text(next.hint.riddle)
-                    .font(FunStyle.rounded(18, .semibold))
-                    .foregroundColor(FunStyle.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                if card.level >= 1 {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "lightbulb.fill").foregroundColor(.orange)
-                        Text(next.hint.help)
-                            .font(FunStyle.rounded(15))
-                            .foregroundColor(FunStyle.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                } else if !next.hint.help.isEmpty {
-                    Button {
-                        withAnimation(.spring()) { fun.revealMoreHint(next.id) }
-                    } label: {
-                        Label(config.texts.moreHintButton, systemImage: "lightbulb")
-                            .font(FunStyle.rounded(15, .semibold))
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .font(.system(size: 15, weight: .bold)).foregroundColor(FunStyle.violet)
+                        Text(config.texts.nextHintTitle)
+                            .font(FunStyle.rounded(14, .bold))
                             .foregroundColor(FunStyle.violet)
+                            .textCase(.uppercase)
                     }
-                }
-            case .comingSoon:
-                Label {
-                    Text(Template.render(config.texts.comingSoonText, ["left": "\(engine.total - engine.foundCount)"]))
-                        .font(FunStyle.rounded(17, .semibold))
+                    PictogramRow(keys: next.hint.pictograms)
+                    Text(next.hint.riddle)
+                        .font(FunStyle.rounded(18, .semibold))
                         .foregroundColor(FunStyle.ink)
                         .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "hourglass").foregroundColor(FunStyle.violet)
+                    if card.level >= 1 {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "lightbulb.fill").foregroundColor(.orange)
+                            Text(next.hint.help)
+                                .font(FunStyle.rounded(15))
+                                .foregroundColor(FunStyle.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    } else if !next.hint.help.isEmpty {
+                        Button {
+                            withAnimation(.spring()) { fun.revealMoreHint(next.id) }
+                        } label: {
+                            Label(config.texts.moreHintButton, systemImage: "lightbulb")
+                                .font(FunStyle.rounded(15, .semibold))
+                                .foregroundColor(FunStyle.violet)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Capsule().fill(Color.white.opacity(0.8)))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            case .comingSoon:
+                HStack(spacing: 14) {
+                    GlossyOrb(size: 56) {
+                        Image(systemName: "hourglass").font(.system(size: 22, weight: .bold)).foregroundColor(FunStyle.violet)
+                    }
+                    Text(Template.render(config.texts.comingSoonText, ["left": "\(engine.total - engine.foundCount)"]))
+                        .font(FunStyle.rounded(16, .semibold))
+                        .foregroundColor(FunStyle.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             case .allFound:
-                Text(config.texts.allFoundTitle).font(FunStyle.rounded(20, .heavy)).foregroundColor(FunStyle.ink)
-                Text(config.texts.allFoundText).font(FunStyle.rounded(16)).foregroundColor(FunStyle.ink)
+                HStack(spacing: 12) {
+                    TreasureChest().frame(width: 92, height: 84)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(config.texts.allFoundTitle)
+                            .font(FunStyle.rounded(20, .heavy)).foregroundColor(FunStyle.ink)
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                        Text(config.texts.allFoundText)
+                            .font(FunStyle.rounded(15)).foregroundColor(FunStyle.ink.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(LinearGradient(colors: [FunStyle.lavender.opacity(0.45), FunStyle.sky.opacity(0.45)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-        )
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Self.cardFill))
     }
 }
 
-/// Слоты коллекции: найденные — цветные, ненайденные — «?», ещё не выпущенные — замочек.
+/// Слоты коллекции — глянцевые шарики: найденные с иконкой, ненайденные — «?», ещё не выпущенные — замочек.
 struct ProgressSlots: View {
     let eggs: [Egg]
     let total: Int
     let isFound: (String) -> Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             ForEach(0..<total, id: \.self) { i in
                 let egg = i < eggs.count ? eggs[i] : nil
                 let found = egg.map { isFound($0.id) } ?? false
-                ZStack {
-                    Circle()
-                        .fill(found ? AnyShapeStyle(FunStyle.badgeGradient) : AnyShapeStyle(FunStyle.card))
+                GlossyOrb(size: 60, muted: !found) {
                     if let egg, found {
-                        EggIcon(pictogram: egg.pictogram).padding(10)
+                        EggIcon(pictogram: egg.pictogram).padding(14)
                     } else if egg != nil {
-                        Text("?").font(FunStyle.rounded(20, .heavy)).foregroundColor(FunStyle.secondary)
+                        Text("?").font(FunStyle.rounded(24, .heavy)).foregroundColor(FunStyle.violet.opacity(0.55))
                     } else {
-                        Image(systemName: "lock.fill").font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(FunStyle.secondary.opacity(0.6))
+                        Image(systemName: "lock.fill").font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(FunStyle.violet.opacity(0.45))
                     }
                 }
-                .frame(width: 50, height: 50)
-                .overlay(Circle().stroke(found ? FunStyle.violet.opacity(0.4) : Color.clear, lineWidth: 2))
             }
         }
         .frame(maxWidth: .infinity)
@@ -253,11 +292,9 @@ struct EggBadge: View {
     let size: CGFloat
 
     var body: some View {
-        ZStack {
-            Circle().fill(FunStyle.badgeGradient)
-            EggIcon(pictogram: pictogram).padding(size * 0.2)
+        GlossyOrb(size: size) {
+            EggIcon(pictogram: pictogram).padding(size * 0.22)
         }
-        .frame(width: size, height: size)
     }
 }
 
@@ -307,12 +344,12 @@ struct EggIcon: View {
 
     private func bubble(_ d: CGFloat) -> some View {
         Circle()
-            .fill(RadialGradient(colors: [.white.opacity(0.1), Color(red: 0.8, green: 0.7, blue: 1).opacity(0.7)],
-                                 center: .center, startRadius: 0, endRadius: d * 0.55))
-            .overlay(Circle().stroke(Color.white, lineWidth: max(1, d * 0.06)))
-            .overlay(Circle().fill(Color.white.opacity(0.9)).frame(width: d * 0.22, height: d * 0.14)
-                .offset(x: -d * 0.18, y: -d * 0.2))
+            .fill(RadialGradient(colors: [.white.opacity(0.05), .white.opacity(0.35)], center: .center, startRadius: 0, endRadius: d * 0.55))
+            .overlay(Circle().stroke(Color.white, lineWidth: max(1.5, d * 0.09)))
+            .overlay(Circle().trim(from: 0.55, to: 0.72).stroke(Color.white, style: StrokeStyle(lineWidth: max(1, d * 0.07), lineCap: .round))
+                .padding(d * 0.2))
             .frame(width: d, height: d)
+            .shadow(color: FunStyle.violet.opacity(0.25), radius: 1.5)
     }
 }
 
@@ -698,5 +735,244 @@ struct HoldFogView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Глянцевый шарик (слоты коллекции, значок пасхалки)
+
+struct GlossyOrb<Content: View>: View {
+    let size: CGFloat
+    var muted = false
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            Circle().fill(RadialGradient(
+                colors: muted
+                    ? [Color(red: 0.97, green: 0.97, blue: 1), Color(red: 0.91, green: 0.90, blue: 0.98), Color(red: 0.84, green: 0.83, blue: 0.95)]
+                    : [Color(red: 0.97, green: 0.96, blue: 1), Color(red: 0.86, green: 0.83, blue: 1), Color(red: 0.72, green: 0.67, blue: 0.98)],
+                center: UnitPoint(x: 0.38, y: 0.3), startRadius: size * 0.04, endRadius: size * 0.74))
+            // светлый ободок, как у стеклянной бусины
+            Circle().fill(RadialGradient(colors: [.white.opacity(0), .white.opacity(0.55)],
+                                         center: .center, startRadius: size * 0.34, endRadius: size * 0.5))
+            content
+            Ellipse()
+                .fill(LinearGradient(colors: [.white.opacity(0.9), .white.opacity(0)], startPoint: .top, endPoint: .bottom))
+                .frame(width: size * 0.52, height: size * 0.26)
+                .offset(y: -size * 0.28)
+                .allowsHitTesting(false)
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: max(1, size * 0.025)))
+        .shadow(color: FunStyle.violet.opacity(muted ? 0.1 : 0.25), radius: size * 0.12, y: size * 0.06)
+    }
+}
+
+/// Четырёхлучевая искорка.
+struct SparkleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let w = rect.width / 2, h = rect.height / 2
+        let k: CGFloat = 0.18
+        var p = Path()
+        p.move(to: CGPoint(x: c.x, y: c.y - h))
+        p.addQuadCurve(to: CGPoint(x: c.x + w, y: c.y), control: CGPoint(x: c.x + w * k, y: c.y - h * k))
+        p.addQuadCurve(to: CGPoint(x: c.x, y: c.y + h), control: CGPoint(x: c.x + w * k, y: c.y + h * k))
+        p.addQuadCurve(to: CGPoint(x: c.x - w, y: c.y), control: CGPoint(x: c.x - w * k, y: c.y + h * k))
+        p.addQuadCurve(to: CGPoint(x: c.x, y: c.y - h), control: CGPoint(x: c.x - w * k, y: c.y - h * k))
+        p.closeSubpath()
+        return p
+    }
+}
+
+private struct Twinkle: View {
+    let color: Color
+    let size: CGFloat
+    let phase: Double
+    let t: Double
+
+    var body: some View {
+        let k = 0.5 + 0.5 * sin(t * 2.6 + phase)
+        SparkleShape()
+            .fill(color)
+            .frame(width: size, height: size)
+            .scaleEffect(0.7 + 0.35 * k)
+            .opacity(0.55 + 0.45 * k)
+            .shadow(color: color.opacity(0.5), radius: 3)
+    }
+}
+
+// MARK: - Маскот: добрый робот машет сердечком
+
+/// Нарисован кодом (векторно, без картинок): покачивается, моргает, сердечко бьётся.
+struct RobotMascot: View {
+    private static let shell = LinearGradient(colors: [.white, Color(red: 0.89, green: 0.87, blue: 1), Color(red: 0.78, green: 0.74, blue: 0.98)],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing)
+    private static let purple = LinearGradient(colors: [Color(red: 0.74, green: 0.56, blue: 1), Color(red: 0.5, green: 0.3, blue: 0.92)],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing)
+    private static let cyan = Color(red: 0.32, green: 0.95, blue: 0.96)
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { g in
+                let s = min(g.size.width / 130, g.size.height / 152)
+                ZStack(alignment: .topLeading) {
+                    Twinkle(color: Color(red: 0.62, green: 0.5, blue: 1), size: 18 * s, phase: 0, t: t).position(x: 14 * s, y: 22 * s)
+                    Twinkle(color: Color(red: 0.62, green: 0.5, blue: 1), size: 11 * s, phase: 1.7, t: t).position(x: 34 * s, y: 50 * s)
+                    accents(s).position(x: 14 * s, y: 102 * s)
+                    robot(s, t: t).offset(y: 2.5 * s * sin(t * 2))
+                }
+            }
+        }
+    }
+
+    private func accents(_ s: CGFloat) -> some View {
+        ZStack {
+            Capsule().fill(Color(red: 1, green: 0.84, blue: 0.2)).frame(width: 12 * s, height: 4 * s).rotationEffect(.degrees(-30)).offset(y: -6 * s)
+            Capsule().fill(Color(red: 1, green: 0.84, blue: 0.2)).frame(width: 10 * s, height: 4 * s).rotationEffect(.degrees(15)).offset(x: 2 * s, y: 5 * s)
+        }
+    }
+
+    @ViewBuilder
+    private func robot(_ s: CGFloat, t: Double) -> some View {
+        let blink = (t.truncatingRemainder(dividingBy: 3.4)) < 0.14
+        ZStack(alignment: .topLeading) {
+            // антенна
+            Path { p in
+                p.move(to: CGPoint(x: 82 * s, y: 40 * s))
+                p.addLine(to: CGPoint(x: 88 * s, y: 15 * s))
+            }
+            .stroke(Color(red: 0.72, green: 0.7, blue: 0.86), style: StrokeStyle(lineWidth: 3.5 * s, lineCap: .round))
+            Circle().fill(Self.purple)
+                .overlay(Circle().fill(Color.white.opacity(0.7)).frame(width: 5 * s, height: 4 * s).offset(x: -2.5 * s, y: -3 * s))
+                .frame(width: 17 * s, height: 17 * s)
+                .shadow(color: Color(red: 0.6, green: 0.4, blue: 1).opacity(0.4 + 0.3 * sin(t * 3)), radius: 6 * s)
+                .position(x: 89 * s, y: 12 * s)
+            // корпус с фиолетовой кнопкой
+            RoundedRectangle(cornerRadius: 20 * s, style: .continuous).fill(Self.shell)
+                .frame(width: 70 * s, height: 44 * s)
+                .shadow(color: FunStyle.violet.opacity(0.2), radius: 6 * s, y: 3 * s)
+                .position(x: 90 * s, y: 132 * s)
+            Circle().stroke(Self.purple, lineWidth: 4 * s)
+                .background(Circle().fill(Color(red: 0.85, green: 0.78, blue: 1)))
+                .frame(width: 17 * s, height: 17 * s)
+                .position(x: 110 * s, y: 135 * s)
+            // голова
+            RoundedRectangle(cornerRadius: 34 * s, style: .continuous).fill(Self.shell)
+                .overlay(RoundedRectangle(cornerRadius: 34 * s, style: .continuous).stroke(Color.white, lineWidth: 1.5 * s))
+                .frame(width: 96 * s, height: 82 * s)
+                .shadow(color: FunStyle.violet.opacity(0.25), radius: 10 * s, y: 5 * s)
+                .position(x: 78 * s, y: 77 * s)
+            // ушко
+            RoundedRectangle(cornerRadius: 5 * s, style: .continuous)
+                .fill(Color(red: 0.76, green: 0.72, blue: 0.96))
+                .frame(width: 9 * s, height: 26 * s)
+                .position(x: 30 * s, y: 78 * s)
+            // экран-лицо
+            RoundedRectangle(cornerRadius: 24 * s, style: .continuous)
+                .fill(LinearGradient(colors: [Color(red: 0.14, green: 0.13, blue: 0.22), Color(red: 0.03, green: 0.03, blue: 0.07)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(
+                    Ellipse().fill(Color.white.opacity(0.14)).frame(width: 34 * s, height: 12 * s)
+                        .rotationEffect(.degrees(-12)).offset(x: -16 * s, y: -15 * s)
+                )
+                .frame(width: 76 * s, height: 56 * s)
+                .position(x: 80 * s, y: 79 * s)
+            // глаза-улыбки
+            ForEach([63.0, 97.0], id: \.self) { x in
+                ZStack {
+                    eyeArc(s).blur(radius: 3 * s).opacity(0.9)
+                    eyeArc(s)
+                }
+                .scaleEffect(x: 1, y: blink ? 0.2 : 1)
+                .position(x: x * s, y: 82 * s)
+            }
+            // ручка с сердечком
+            Path { p in
+                p.move(to: CGPoint(x: 58 * s, y: 132 * s))
+                p.addQuadCurve(to: CGPoint(x: 34 * s, y: 122 * s), control: CGPoint(x: 42 * s, y: 136 * s))
+            }
+            .stroke(Self.shell, style: StrokeStyle(lineWidth: 11 * s, lineCap: .round))
+            Image(systemName: "heart.fill")
+                .font(.system(size: 22 * s, weight: .bold))
+                .foregroundStyle(Self.purple)
+                .shadow(color: Color(red: 0.6, green: 0.4, blue: 1).opacity(0.45), radius: 4 * s)
+                .scaleEffect(1 + 0.08 * max(0, sin(t * 6)))
+                .rotationEffect(.degrees(-18 + 6 * sin(t * 2)))
+                .position(x: 30 * s, y: 114 * s)
+        }
+    }
+
+    private func eyeArc(_ s: CGFloat) -> some View {
+        Path { p in
+            p.addArc(center: CGPoint(x: 10 * s, y: 12 * s), radius: 9 * s, startAngle: .degrees(200), endAngle: .degrees(340), clockwise: false)
+        }
+        .stroke(Self.cyan, style: StrokeStyle(lineWidth: 5 * s, lineCap: .round))
+        .frame(width: 20 * s, height: 16 * s)
+    }
+}
+
+// MARK: - Сундук с сокровищем: «Все секреты найдены!»
+
+struct TreasureChest: View {
+    private static let purple = LinearGradient(colors: [Color(red: 0.7, green: 0.55, blue: 1), Color(red: 0.46, green: 0.3, blue: 0.88)],
+                                               startPoint: .top, endPoint: .bottom)
+    private static let strap = Color(red: 0.8, green: 0.72, blue: 1)
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { g in
+                let s = min(g.size.width / 92, g.size.height / 84)
+                ZStack(alignment: .topLeading) {
+                    // сияние из сундука
+                    Circle()
+                        .fill(RadialGradient(colors: [Color(red: 1, green: 0.95, blue: 0.6).opacity(0.9), Color(red: 1, green: 0.9, blue: 0.5).opacity(0)],
+                                             center: .center, startRadius: 2, endRadius: 34 * s))
+                        .frame(width: 70 * s, height: 70 * s)
+                        .scaleEffect(0.92 + 0.08 * sin(t * 2.4))
+                        .position(x: 46 * s, y: 36 * s)
+                    // откинутая крышка
+                    RoundedRectangle(cornerRadius: 9 * s, style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.55, green: 0.4, blue: 0.95), Color(red: 0.38, green: 0.24, blue: 0.78)],
+                                             startPoint: .top, endPoint: .bottom))
+                        .overlay(RoundedRectangle(cornerRadius: 3 * s).fill(Self.strap).frame(width: 6 * s).offset(x: -18 * s))
+                        .overlay(RoundedRectangle(cornerRadius: 3 * s).fill(Self.strap).frame(width: 6 * s).offset(x: 18 * s))
+                        .frame(width: 62 * s, height: 24 * s)
+                        .rotationEffect(.degrees(-10), anchor: .bottom)
+                        .position(x: 44 * s, y: 26 * s)
+                    // звезда
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 30 * s, weight: .bold))
+                        .foregroundStyle(LinearGradient(colors: [Color(red: 1, green: 0.95, blue: 0.5), Color(red: 1, green: 0.72, blue: 0.18)],
+                                                        startPoint: .top, endPoint: .bottom))
+                        .shadow(color: Color(red: 1, green: 0.8, blue: 0.2).opacity(0.8), radius: 7 * s)
+                        .offset(y: -2.5 * s * sin(t * 2.4))
+                        .position(x: 46 * s, y: 34 * s)
+                    // короб
+                    RoundedRectangle(cornerRadius: 10 * s, style: .continuous)
+                        .fill(Self.purple)
+                        .overlay(alignment: .top) {
+                            RoundedRectangle(cornerRadius: 4 * s).fill(Self.strap).frame(height: 7 * s).padding(.horizontal, 2 * s)
+                        }
+                        .overlay(RoundedRectangle(cornerRadius: 3 * s).fill(Self.strap.opacity(0.8)).frame(width: 6 * s).offset(x: -21 * s))
+                        .overlay(RoundedRectangle(cornerRadius: 3 * s).fill(Self.strap.opacity(0.8)).frame(width: 6 * s).offset(x: 21 * s))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4 * s).fill(Color(red: 0.95, green: 0.92, blue: 1))
+                                .overlay(Circle().fill(FunStyle.violet).frame(width: 4 * s, height: 4 * s))
+                                .frame(width: 13 * s, height: 15 * s).offset(y: 2 * s)
+                        )
+                        .frame(width: 66 * s, height: 38 * s)
+                        .shadow(color: FunStyle.violet.opacity(0.3), radius: 6 * s, y: 3 * s)
+                        .position(x: 46 * s, y: 60 * s)
+                    Twinkle(color: Color(red: 1, green: 0.84, blue: 0.25), size: 13 * s, phase: 0.4, t: t).position(x: 10 * s, y: 18 * s)
+                    Twinkle(color: Color(red: 0.7, green: 0.6, blue: 1), size: 11 * s, phase: 2.1, t: t).position(x: 82 * s, y: 12 * s)
+                    Twinkle(color: Color(red: 1, green: 0.84, blue: 0.25), size: 10 * s, phase: 3.3, t: t).position(x: 84 * s, y: 52 * s)
+                    Twinkle(color: Color(red: 0.7, green: 0.6, blue: 1), size: 8 * s, phase: 4.4, t: t).position(x: 6 * s, y: 62 * s)
+                }
+            }
+        }
     }
 }

@@ -179,7 +179,8 @@ final class FunLayer: ObservableObject {
 
     /// Аргументы запуска для автоматической проверки на устройстве:
     /// `-funReset` — сбросить прогресс, `-funForce <id>` — запустить пасхалку через 1,5 с,
-    /// `-funPreset <name>` — встроенный конфиг, `-funHold <target>` — «зажать» элемент в центре экрана сверху.
+    /// `-funPreset <name>` — встроенный конфиг, `-funHold <target>` — «зажать» элемент в центре экрана сверху,
+    /// `-funSheet <id>` — открыть шторку пасхалки.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
         func value(_ key: String) -> String? {
@@ -191,6 +192,12 @@ final class FunLayer: ObservableObject {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 self?.forcePlay(id)
+            }
+        }
+        if let id = value("-funSheet") {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self?.openSheet(from: ToastModel(eggId: id, title: "", subtitle: "", isFirstFind: false))
             }
         }
         if let target = value("-funHold") {

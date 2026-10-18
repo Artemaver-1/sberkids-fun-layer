@@ -235,13 +235,13 @@
   "assets": {
     "bubble": {
       "url": "assets/bubble.png",
-      "sha256": "0c533ececa4ee4e1abf1fe6732e9a6d0b5be145307ad6eea5849647bcca92adc",
-      "bytes": 137670
+      "sha256": "0600fdfd12efd95b5537643080affe664f23239b5a243f4e90c546a59e4e30d2",
+      "bytes": 173793
     },
     "bubble_gold": {
       "url": "assets/bubble_gold.png",
-      "sha256": "db0f8b7187da16745bc9946ca432e534e853cc7dc5d996b60b942d86b2e4d1b2",
-      "bytes": 117369
+      "sha256": "f80f3c34da5b729fdd176a11b2e8937317afebc78e668ca612dd92fb6da29e68",
+      "bytes": 137800
     },
     "fog": {
       "url": "assets/fog.png",

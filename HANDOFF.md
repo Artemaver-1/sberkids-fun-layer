@@ -30,6 +30,7 @@
   ```bash
   cd ios/FunLayerCore && F=/Library/Developer/CommandLineTools/Library/Developer/Frameworks; L=/Library/Developer/CommandLineTools/Library/Developer/usr/lib; DEVELOPER_DIR=/Library/Developer/CommandLineTools swift test -Xswiftc -F$F -Xlinker -F$F -Xlinker -rpath -Xlinker $F -Xlinker -rpath -Xlinker $L
   ```
+- Шторка «Это пасхалка!» по макету пользователя: робот-маскот с сердечком, сундук со звездой, глянцевые шарики-слоты — всё нарисовано кодом в `FunLayerUI.swift` (`RobotMascot`, `TreasureChest`, `GlossyOrb`), без картинок. Пузыри — `bubble()` в `tools/gen_assets.py`: прозрачный центр, переливы плёнки у края по Френелю, двойное доменное искажение шума.
 - `ios/SberKidsFun` — приложение (Swift 6 strict, iOS 15+, Lottie через SPM `lottie-spm`):
   - `FunLayer/` — модуль: окно-оверлей с пропуском касаний, рендеринг (Canvas + Lottie), датчики, тост, шторка, шеринг, звук, загрузка конфига с CDN (sha256, атомарная активация, ETag).
   - `Shell/` — оболочка СберKids **1:1 из экспорта Figma** (картинки экранов + зоны нажатия). Нарезка: `python3 tools/build_shell_assets.py ~/Downloads/sberkids-figma` → `ShellAssets/`.

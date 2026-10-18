@@ -30,68 +30,82 @@ def save_png(arr, name):
 
 # ---------------------------------------------------------------- пузырь
 
-def smooth_noise(size, scale, seed):
-    """Гладкий шум: случайная сетка + бикубическое растяжение."""
+def fbm(n, seed, octaves=4, base=2):
+    """Гладкий шум в float: случайные сетки, бикубическое растяжение, без 8-битных ступенек."""
     rng = np.random.default_rng(seed)
-    small = rng.random((scale, scale)).astype(np.float32)
-    img = Image.fromarray((small * 255).astype(np.uint8), "L").resize((size, size), Image.BICUBIC)
-    return np.asarray(img, np.float32) / 255.0
+    out = np.zeros((n, n), np.float32); amp = 1.0; tot = 0.0
+    for o in range(octaves):
+        k = base * 2 ** o + 1
+        small = rng.random((k, k)).astype(np.float32)
+        a = np.asarray(Image.fromarray(small, "F").resize((n, n), Image.BICUBIC), np.float32)
+        out += amp * a; tot += amp; amp *= 0.5
+    return out / tot
 
+def sample(field, X, Y):
+    """Билинейная выборка поля в координатах [-1, 1]."""
+    n = field.shape[0]
+    fx = np.clip((X + 1) / 2 * (n - 1), 0, n - 1.001); fy = np.clip((Y + 1) / 2 * (n - 1), 0, n - 1.001)
+    x0 = fx.astype(np.int32); y0 = fy.astype(np.int32); tx = fx - x0; ty = fy - y0
+    return (field[y0, x0] * (1 - tx) * (1 - ty) + field[y0, x0 + 1] * tx * (1 - ty)
+            + field[y0 + 1, x0] * (1 - tx) * ty + field[y0 + 1, x0 + 1] * tx * ty)
 
-def bubble(size=320, gold=False, seed=1):
-    ss = 2  # суперсэмплинг для гладкого края
-    n = size * ss
+RAINBOW = [[140, 128, 255], [96, 200, 255], [150, 240, 230], [255, 232, 120], [255, 128, 196], [196, 140, 255]]
+GOLD = [[255, 190, 40], [255, 128, 96], [255, 222, 80], [255, 150, 40], [255, 205, 120], [245, 130, 70]]
+
+def bubble(size=448, seed=7, gold=False):
+    """Мыльный пузырь: прозрачный центр, переливы плёнки у края (Френель), блики-«окна»."""
+    ss = 2; n = size * ss
     y, x = np.mgrid[0:n, 0:n].astype(np.float32)
-    cx = cy = (n - 1) / 2
-    R = n * 0.47
-    dx, dy = (x - cx) / R, (y - cy) / R
+    c = (n - 1) / 2; R = n * 0.485
+    dx, dy = (x - c) / R, (y - c) / R
     r = np.sqrt(dx * dx + dy * dy)
     inside = r <= 1.0
     rr = np.clip(r, 0, 1)
-    cos_t = np.sqrt(1 - rr * rr)
-
-    # толщина плёнки: тоньше сверху (стекает вниз) + завихрения
-    swirl = smooth_noise(n, 7, seed) * 0.6 + smooth_noise(n, 15, seed + 1) * 0.4
-    thickness = 260 + 520 * (0.5 + 0.5 * dy) + 380 * swirl  # нм
-    nfilm = 1.33
-    rgb = np.zeros((n, n, 3), np.float32)
-    for i, lam in enumerate((650.0, 540.0, 450.0)):
-        phase = 4 * math.pi * nfilm * thickness * np.sqrt(1 - (1 - cos_t ** 2) / nfilm ** 2) / lam
-        rgb[..., i] = np.sin(phase / 2) ** 2
-    # насыщенность и яркость в духе макетов СберKids (лайм/лаванда/голубой)
-    # насыщенные цвета плёнки: на светлом фоне СберKids пузырь должен читаться
-    rgb = np.clip(1.25 * rgb - 0.1, 0, 1)
-    if gold:
-        gold_tint = np.array([1.0, 0.78, 0.25], np.float32)
-        lum = rgb.mean(axis=2, keepdims=True)
-        rgb = gold_tint * (0.55 + 0.6 * lum)
-
-    # прозрачность: почти прозрачный центр, плотный обод (Френель)
-    fres = rr ** 5
-    alpha = 0.06 + 0.85 * fres
-    if gold:
-        alpha = 0.1 + 0.85 * rr ** 4
-    # тонкая кромка: цветная, чуть темнее — видна и на белом фоне
-    edge = np.exp(-((rr - 0.982) / 0.016) ** 2)
-    rgb = rgb * (1 - edge[..., None] * 0.5)
-    alpha = np.maximum(alpha, edge * 0.95)
-
-    # блики: окно сверху-слева и маленький снизу-справа
-    def spot(ox, oy, sx, sy, rot, strength):
-        c, s = math.cos(rot), math.sin(rot)
-        ux = (dx - ox) * c + (dy - oy) * s
-        uy = -(dx - ox) * s + (dy - oy) * c
-        return strength * np.exp(-((ux / sx) ** 2 + (uy / sy) ** 2) ** 1.4)
-
-    hl = spot(-0.42, -0.45, 0.30, 0.15, -0.75, 1.0) + spot(0.5, 0.55, 0.12, 0.06, -0.75, 0.6)
-    hl += spot(-0.12, -0.70, 0.08, 0.05, 0.0, 0.5)
-    rgb = rgb * (1 - hl[..., None]) + hl[..., None]
-    alpha = np.clip(alpha + hl * 0.9, 0, 1)
-
-    alpha = np.where(inside, alpha, 0)
-    out = np.dstack([np.clip(rgb, 0, 1), alpha])
-    img = Image.fromarray((out * 255).astype(np.uint8), "RGBA").resize((size, size), Image.LANCZOS)
-    return np.asarray(img, np.float32) / 255.0
+    # плёнка: двойное доменное искажение — разводы закручиваются, как у настоящего пузыря
+    f1, f2, f3 = fbm(n, seed, 3, 2), fbm(n, seed + 1, 3, 2), fbm(n, seed + 2, 4, 2)
+    wx = dx + 0.9 * (f1 - 0.5); wy = dy + 0.9 * (f2 - 0.5)
+    g1 = sample(f2, wx * 0.8 + 0.1, wy * 0.8 - 0.2); g2 = sample(f1, wy * 0.8 + 0.3, wx * 0.8)
+    sw = sample(f3, wx + 0.9 * (g1 - 0.5), wy + 0.9 * (g2 - 0.5))
+    ang = np.arctan2(dy, dx)
+    phase = 2.6 * sw + 0.35 * (0.5 + 0.5 * dy) + 0.18 * np.sin(ang + 3 * rr) + 0.9 * rr
+    pal = np.array(GOLD if gold else RAINBOW, np.float32) / 255
+    ph = (phase % 1.0) * len(pal)
+    i0 = np.floor(ph).astype(np.int32) % len(pal); i1 = (i0 + 1) % len(pal)
+    fr = (ph - np.floor(ph))[..., None]; fr = fr * fr * (3 - 2 * fr)
+    col = pal[i0] * (1 - fr) + pal[i1] * fr
+    # отражение по Френелю: прозрачный центр, плотный цветной пояс у края
+    t = np.clip((rr - 0.42) / 0.58, 0, 1)
+    prof = 0.05 + 0.78 * t ** 2.3
+    vary = 0.7 + 0.6 * sample(fbm(n, seed + 5, 3, 2), wx, wy)
+    a = prof * vary * (0.9 + 0.2 * np.clip(-dy, 0, 1))
+    # молочная дымка неба сверху
+    haze = np.exp(-(((dx + 0.15) / 0.8) ** 2 + ((dy + 0.6) / 0.42) ** 2) ** 1.2) * 0.2
+    col = col * (1 - haze[..., None]) + haze[..., None]
+    a = a + haze * 0.8
+    # тонкая кромка — чуть плотнее и темнее, чтобы пузырь читался на белом
+    edge = np.exp(-((rr - 0.979) / 0.018) ** 2)
+    col = col * (1 - 0.25 * edge[..., None])
+    a = np.maximum(a, edge * 0.7)
+    # блики-«окна»
+    def spot(ox, oy, sx, sy, rot, s, p=1.6):
+        cr, sr = math.cos(rot), math.sin(rot)
+        ux = (dx - ox) * cr + (dy - oy) * sr
+        uy = -(dx - ox) * sr + (dy - oy) * cr
+        return s * np.exp(-((ux / sx) ** 2 + (uy / sy) ** 2) ** p)
+    hl = spot(-0.42, -0.5, 0.32, 0.17, -0.75, 0.95, 1.1) + spot(-0.12, -0.74, 0.1, 0.05, -0.15, 0.7)
+    hl += spot(0.56, 0.54, 0.16, 0.06, -0.8, 0.5)
+    hl = np.clip(hl, 0, 1)
+    col = col * (1 - hl[..., None]) + hl[..., None]
+    a = np.clip(np.maximum(a, hl * 0.95), 0, 0.95)
+    a = a * np.clip((1.0 - r) * R / 1.2, 0, 1)
+    out = np.dstack([np.clip(col, 0, 1), np.where(inside, a, 0)])
+    # уменьшение в float с предумножением — без ступенек в почти прозрачном центре
+    pm = out.copy(); pm[..., :3] *= pm[..., 3:4]
+    arr = np.dstack([np.asarray(Image.fromarray(np.ascontiguousarray(pm[..., k], dtype=np.float32), "F").resize((size, size), Image.LANCZOS), np.float32)
+                     for k in range(4)])
+    al = np.clip(arr[..., 3:4], 0, 1); arr[..., 3:4] = al
+    arr[..., :3] = np.where(al > 1e-3, arr[..., :3] / np.maximum(al, 1e-3), 0)
+    return np.clip(arr, 0, 1)
 
 
 # ---------------------------------------------------------------- снежинка
@@ -579,8 +593,8 @@ def factory():
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    save_png(bubble(320, gold=False, seed=11), "bubble.png")
-    save_png(bubble(320, gold=True, seed=23), "bubble_gold.png")
+    save_png(bubble(448, seed=12), "bubble.png")
+    save_png(bubble(384, seed=23, gold=True), "bubble_gold.png")
     save_png(snowflake(160), "snowflake.png")
     save_png(fog(256), "fog.png")
     write_wav("pop.wav", pop())
