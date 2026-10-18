@@ -93,7 +93,7 @@ public struct SpiralParams: Sendable, Equatable {
     public var minDuration: TimeInterval = 0.6
     public var maxDuration: TimeInterval = 4.0
     public var directionConsistency = 0.85
-    public var minRadiusChange = 0.35     // доля: насколько радиус в начале и в конце различается
+    public var minRadiusTrend = 0.5       // монотонность расстояния до центра спирали (0…1)
     public init() {}
 }
 

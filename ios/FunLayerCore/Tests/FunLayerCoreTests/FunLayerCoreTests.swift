@@ -283,6 +283,28 @@ struct DetectorTests {
         #expect(rejected(zigzag))
     }
 
+    @Test("Неровная спираль со смещённым центром — тоже спираль")
+    func sloppySpiral() {
+        let d = SpiralDetector()
+        let n = 200
+        let pts = (0..<n).map { i -> StrokePoint in
+            let p = Double(i) / Double(n - 1)
+            let a = p * 2.6 * 2 * .pi
+            let r = 130 * (1 - 0.8 * p) * (1 + 0.12 * sin(a * 1.7))
+            return StrokePoint(x: 210 + 25 * p + r * cos(a) * 1.15, y: 380 + r * sin(a), t: p * 2.4)
+        }
+        if case .recognized = d.evaluate(pts) {} else { Issue.record("\(d.evaluate(pts))") }
+    }
+
+    @Test("Начало спирали показывает след, обычный свайп — нет")
+    func trailGate() {
+        let d = SpiralDetector()
+        let start = spiral(turns: 0.8, r0: 120, r1: 95)
+        #expect(d.looksLikeSpiral(start))
+        let swipe = (0..<40).map { StrokePoint(x: 200, y: 700 - Double($0) * 10, t: Double($0) * 0.01) }
+        #expect(!d.looksLikeSpiral(swipe))
+    }
+
     @Test("Экраном вниз и обратно")
     func flip() {
         let d = FaceDownFlipDetector()

@@ -72,6 +72,9 @@ final class FunLayer: ObservableObject {
     private let strokes = StrokeRecognizer()
     private let spiral = SpiralDetector()
     private var pendingPortal: [CGPoint]?
+    /// Светящаяся змейка за пальцем (только когда штрих уже похож на спираль).
+    private(set) var trail: [StrokePoint] = []
+    @Published private(set) var trailActive = false
     private var tapEnabled = false
     private var tapHintTask: Task<Void, Never>?
     private weak var appWindow: UIWindow?
@@ -103,6 +106,7 @@ final class FunLayer: ObservableObject {
         window.addGestureRecognizer(strokes)
         strokes.isEnabled = false
         strokes.onStroke = { [weak self] pts in self?.strokeFinished(pts) }
+        strokes.onMove = { [weak self] pts in self?.strokeMoved(pts) }
         palm.isEnabled = false
         palm.onProgress = { [weak self] p in self?.palmChanged(p) }
         palm.onArmed = { [weak self] in self?.palmArmedNow() }
@@ -318,8 +322,27 @@ final class FunLayer: ObservableObject {
         }
     }
 
-    /// Палец поднят: проверяем, не спираль ли это. Ничего не показываем, пока фигура не распознана.
+    /// Палец ещё рисует: если штрих похож на спираль — показываем змейку; набрал витки — сразу запускаем.
+    private func strokeMoved(_ pts: [StrokePoint]) {
+        guard effect == nil, sheet == nil else { return }
+        if trailActive || spiral.looksLikeSpiral(pts) {
+            trail = pts
+            if !trailActive { trailActive = true }
+        }
+        guard trailActive, case .recognized(let turns) = spiral.evaluate(pts) else { return }
+        log(String(format: "spiral recognized on the fly, %.2f turns", turns))
+        strokes.consumed = true
+        trailActive = false
+        trail = []
+        pendingPortal = pts.map { CGPoint(x: $0.x, y: $0.y) }
+        trigger(.spiral)
+        pendingPortal = nil
+    }
+
+    /// Палец поднят: последняя проверка и гасим змейку.
     private func strokeFinished(_ pts: [StrokePoint]) {
+        trailActive = false
+        trail = []
         guard effect == nil, sheet == nil else { return }
         switch spiral.evaluate(pts) {
         case .recognized(let turns):

@@ -20,7 +20,7 @@ data class FlipParams(val down: Double = 0.8, val maxDown: Double = 6.0)
 data class TapParams(val target: String = "settings.version", val taps: Int = 7, val maxGap: Double = 0.8)
 
 data class SpiralParams(val minTurns: Double = 2.0, val minDiameter: Double = 120.0, val minDuration: Double = 0.6,
-                        val maxDuration: Double = 4.0, val directionConsistency: Double = 0.85, val minRadiusChange: Double = 0.35)
+                        val maxDuration: Double = 4.0, val directionConsistency: Double = 0.85, val minRadiusTrend: Double = 0.5)
 
 data class StrokePoint(val x: Double, val y: Double, val t: Double)
 
@@ -61,9 +61,20 @@ class SpiralDetector(var params: SpiralParams = SpiralParams()) {
         val turns = kotlin.math.abs(total) / (2 * Math.PI)
         if (turns < params.minTurns) return Result.Rejected("витков $turns")
         if (maxOf(pos, neg) / maxOf(1e-9, pos + neg) < params.directionConsistency) return Result.Rejected("вращение не в одну сторону")
-        val k = maxOf(3, radii.size / 7)
-        val rStart = radii.take(k).average(); val rEnd = radii.takeLast(k).average()
-        if (kotlin.math.abs(rStart - rEnd) / maxOf(1.0, maxOf(rStart, rEnd)) < params.minRadiusChange) return Result.Rejected("это круги, а не спираль")
+        // центр спирали — конец штриха, ближний к середине; расстояние до него должно монотонно меняться
+        val first = pts.first(); val last = pts.last()
+        fun d(p: StrokePoint) = kotlin.math.hypot(p.x - cx, p.y - cy)
+        val core = if (d(first) < d(last)) first else last
+        val n = pts.size.toDouble()
+        var si = 0.0; var sr = 0.0; var sii = 0.0; var srr = 0.0; var sir = 0.0
+        pts.forEachIndexed { i, p ->
+            val r = kotlin.math.hypot(p.x - core.x, p.y - core.y); val x = i.toDouble()
+            si += x; sr += r; sii += x * x; srr += r * r; sir += x * r
+        }
+        val cov = sir / n - (si / n) * (sr / n)
+        val vi = sii / n - (si / n) * (si / n); val vr = srr / n - (sr / n) * (sr / n)
+        val trend = if (vi > 0 && vr > 0) kotlin.math.abs(cov / kotlin.math.sqrt(vi * vr)) else 0.0
+        if (trend < params.minRadiusTrend) return Result.Rejected("это круги, а не спираль")
         return Result.Recognized(turns)
     }
 }

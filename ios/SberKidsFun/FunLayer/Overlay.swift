@@ -24,6 +24,10 @@ struct OverlayRootView: View {
                 PalmDarknessView(progress: fun.palmProgress, armed: fun.palmArmed)
                     .transition(.opacity)
             }
+            if fun.trailActive {
+                SnakeTrailView()
+                    .transition(.opacity)
+            }
             if let effect = fun.effect {
                 EffectView(runtime: effect)
                     .id(effect.id)
@@ -169,6 +173,43 @@ struct RevealPanel: View {
                 Spacer()
             }
         }
+    }
+}
+
+/// Светящаяся змейка за пальцем: яркая голова, хвост тает примерно за 0,4 с.
+struct SnakeTrailView: View {
+    @EnvironmentObject private var fun: FunLayer
+    private static let life = 0.42
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let _ = timeline.date
+            let now = ProcessInfo.processInfo.systemUptime
+            Canvas { ctx, _ in
+                let pts = fun.trail.filter { now - $0.t < Self.life }
+                guard pts.count > 1 else { return }
+                let violet = Color(red: 0.62, green: 0.48, blue: 1)
+                for i in 1..<pts.count {
+                    let a = pts[i - 1], b = pts[i]
+                    let k = max(0, 1 - (now - b.t) / Self.life)      // 1 у головы, 0 у хвоста
+                    var seg = Path()
+                    seg.move(to: CGPoint(x: a.x, y: a.y))
+                    seg.addLine(to: CGPoint(x: b.x, y: b.y))
+                    ctx.stroke(seg, with: .color(violet.opacity(0.35 * k)),
+                               style: StrokeStyle(lineWidth: 6 + 16 * k, lineCap: .round))
+                    ctx.stroke(seg, with: .color(.white.opacity(0.9 * k)),
+                               style: StrokeStyle(lineWidth: 1.5 + 3 * k, lineCap: .round))
+                }
+                if let head = pts.last {
+                    ctx.fill(Path(ellipseIn: CGRect(x: head.x - 9, y: head.y - 9, width: 18, height: 18)),
+                             with: .color(.white.opacity(0.85)))
+                    ctx.fill(Path(ellipseIn: CGRect(x: head.x - 18, y: head.y - 18, width: 36, height: 36)),
+                             with: .color(violet.opacity(0.3)))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
     }
 }
 

@@ -192,36 +192,41 @@ public struct StrokePoint: Sendable, Equatable {
 }
 
 /// Спираль одним непрерывным штрихом: ≥ N витков вокруг центра, вращение в одну сторону,
-/// радиус заметно меняется (это спираль, а не просто круги), крупно и за разумное время.
-/// Случайно при обычном пользовании такое не нарисовать.
+/// расстояние от центра спирали монотонно меняется (это спираль, а не круги), крупно и за разумное время.
+/// Работает и «на лету» — пока палец ещё рисует. Случайно при обычном пользовании такое не нарисовать.
 public final class SpiralDetector {
     public enum Result: Equatable {
         case recognized(turns: Double)
         case rejected(String)
     }
 
+    public struct Stats: Sendable, Equatable {
+        public var turns = 0.0
+        public var consistency = 0.0
+        public var diameter = 0.0
+        public var duration = 0.0
+        /// |корреляция| номера точки и расстояния до центра спирали: 1 — идеальная спираль, ~0 — круги.
+        public var trend = 0.0
+    }
+
     public var params: SpiralParams
 
     public init(params: SpiralParams = SpiralParams()) { self.params = params }
 
-    public func evaluate(_ pts: [StrokePoint]) -> Result {
-        guard pts.count >= 24, let first = pts.first, let last = pts.last else { return .rejected("мало точек") }
-        let duration = last.t - first.t
-        guard duration >= params.minDuration else { return .rejected("слишком быстро") }
-        guard duration <= params.maxDuration else { return .rejected("слишком долго") }
-        let xs = pts.map(\.x), ys = pts.map(\.y)
-        let w = xs.max()! - xs.min()!, h = ys.max()! - ys.min()!
-        guard max(w, h) >= params.minDiameter else { return .rejected("слишком мелко") }
-        let cx = (xs.max()! + xs.min()!) / 2, cy = (ys.max()! + ys.min()!) / 2
+    public func analyze(_ pts: [StrokePoint]) -> Stats {
+        var st = Stats()
+        guard pts.count >= 3, let first = pts.first, let last = pts.last else { return st }
+        st.duration = last.t - first.t
+        var minX = Double.infinity, maxX = -Double.infinity, minY = Double.infinity, maxY = -Double.infinity
+        for p in pts { minX = min(minX, p.x); maxX = max(maxX, p.x); minY = min(minY, p.y); maxY = max(maxY, p.y) }
+        st.diameter = max(maxX - minX, maxY - minY)
+        let cx = (maxX + minX) / 2, cy = (maxY + minY) / 2
 
         var total = 0.0, positive = 0.0, negative = 0.0
         var prev: Double?
-        var radii: [Double] = []
         for p in pts {
             let dx = p.x - cx, dy = p.y - cy
-            let r = (dx * dx + dy * dy).squareRoot()
-            radii.append(r)
-            guard r > 8 else { prev = nil; continue }   // у самого центра угол неустойчив
+            guard dx * dx + dy * dy > 64 else { prev = nil; continue }   // у самого центра угол неустойчив
             let a = atan2(dy, dx)
             if let pa = prev {
                 var d = a - pa
@@ -232,16 +237,42 @@ public final class SpiralDetector {
             }
             prev = a
         }
-        let turns = abs(total) / (2 * .pi)
-        guard turns >= params.minTurns else { return .rejected(String(format: "витков %.2f", turns)) }
-        let consistency = max(positive, negative) / max(1e-9, positive + negative)
-        guard consistency >= params.directionConsistency else { return .rejected("вращение не в одну сторону") }
-        let k = max(3, radii.count / 7)
-        let rStart = radii.prefix(k).reduce(0, +) / Double(k)
-        let rEnd = radii.suffix(k).reduce(0, +) / Double(k)
-        let change = abs(rStart - rEnd) / max(1, max(rStart, rEnd))
-        guard change >= params.minRadiusChange else { return .rejected("это круги, а не спираль") }
-        return .recognized(turns: turns)
+        st.turns = abs(total) / (2 * .pi)
+        st.consistency = max(positive, negative) / max(1e-9, positive + negative)
+
+        // Центр спирали — тот конец штриха, что ближе к середине (внутренний виток).
+        func dist(_ p: StrokePoint) -> Double { ((p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy)).squareRoot() }
+        let core = dist(first) < dist(last) ? first : last
+        let n = Double(pts.count)
+        var si = 0.0, sr = 0.0, sii = 0.0, srr = 0.0, sir = 0.0
+        for (i, p) in pts.enumerated() {
+            let r = ((p.x - core.x) * (p.x - core.x) + (p.y - core.y) * (p.y - core.y)).squareRoot()
+            let x = Double(i)
+            si += x; sr += r; sii += x * x; srr += r * r; sir += x * r
+        }
+        let cov = sir / n - (si / n) * (sr / n)
+        let vi = sii / n - (si / n) * (si / n), vr = srr / n - (sr / n) * (sr / n)
+        st.trend = vi > 0 && vr > 0 ? abs(cov / (vi * vr).squareRoot()) : 0
+        return st
+    }
+
+    /// Похоже ли уже на начало спирали — тогда можно показывать светящийся след.
+    public func looksLikeSpiral(_ pts: [StrokePoint]) -> Bool {
+        guard pts.count >= 12 else { return false }
+        let s = analyze(pts)
+        return s.turns >= 0.55 && s.consistency >= params.directionConsistency && s.diameter >= params.minDiameter * 0.55
+    }
+
+    public func evaluate(_ pts: [StrokePoint]) -> Result {
+        guard pts.count >= 24 else { return .rejected("мало точек") }
+        let s = analyze(pts)
+        guard s.duration >= params.minDuration else { return .rejected("слишком быстро") }
+        guard s.duration <= params.maxDuration else { return .rejected("слишком долго") }
+        guard s.diameter >= params.minDiameter else { return .rejected("слишком мелко") }
+        guard s.turns >= params.minTurns else { return .rejected(String(format: "витков %.2f", s.turns)) }
+        guard s.consistency >= params.directionConsistency else { return .rejected("вращение не в одну сторону") }
+        guard s.trend >= params.minRadiusTrend else { return .rejected(String(format: "это круги, а не спираль (%.2f)", s.trend)) }
+        return .recognized(turns: s.turns)
     }
 }
 
