@@ -248,14 +248,14 @@
           "id": "factory",
           "weight": 1,
           "effect": {
-            "durationMs": 6700,
+            "durationMs": 8450,
             "sound": "factory",
             "interactSound": "slam",
             "haptic": "medium",
             "reveal": {
               "direction": "right",
               "openMs": 1100,
-              "closeAtMs": 5750,
+              "closeAtMs": 7500,
               "closeMs": 280
             },
             "layers": [
@@ -332,18 +332,18 @@
     },
     "robots": {
       "url": "assets/robots.json",
-      "sha256": "86e988716c7b25312e3e7e52676c8122a7d74352d04801db7e5f16e72b6b6a85",
-      "bytes": 765168
+      "sha256": "985dd4bf28e575b27e644933c8a97f22f1348bb1ccf0300272cdd04c19c22bf6",
+      "bytes": 931884
     },
     "factory": {
       "url": "assets/factory.wav",
-      "sha256": "cacfe39e1de3b755cda9eb306ecc0239e9fc718bf17c15111b75590ecc60c29e",
-      "bytes": 317564
+      "sha256": "7a457e4e4b886380c910a6cab0d940c87891398e23a9f773b88650971ebed286",
+      "bytes": 441044
     },
     "slam": {
       "url": "assets/slam.wav",
-      "sha256": "cef33a8f94aa6641cad0056124a92127693978f207b2fa3cd963c1193e8d5a76",
-      "bytes": 57374
+      "sha256": "555ffdb9e63183ec0b397ec078e509160317fe58eaf88ecfb365b1e1f0ad736f",
+      "bytes": 79424
     }
   }
 }

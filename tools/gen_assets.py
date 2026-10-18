@@ -439,84 +439,125 @@ def servo(dur):
     return motor * 0.5 + ratchet * 0.35
 
 
-def impact():
-    """Удар интерфейса о край телефона: глухой бум + металлический дребезг."""
-    n = int(SR * 0.9)
+def hiss(dur=0.35):
+    """Пневматика: короткое «пшшш»."""
+    n = int(SR * dur)
     t = np.arange(n) / SR
-    boom = np.sin(2 * np.pi * np.cumsum(95 * np.exp(-t * 10) + 45) / SR) * np.exp(-t * 9)
-    body = lowpass(RNG.standard_normal(n), 900) * np.exp(-t * 28) * 0.6
-    metal = _tone([310, 742, 1187, 1690], 0.9, 6, [0.4, 0.3, 0.2, 0.12])
+    return biquad_bandpass(RNG.standard_normal(n), 3600, 0.8) * np.exp(-t * 9) * np.minimum(1, t / 0.01)
+
+
+def grind(dur):
+    """Скрежет металла по направляющей: шум с металлическим резонансом и «зубчатой» модуляцией."""
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    noise = RNG.standard_normal(n)
+    metal = biquad_bandpass(noise, 1750, 6) + biquad_bandpass(noise, 2900, 8) * 0.6
+    teeth = 0.55 + 0.45 * np.abs(np.sin(2 * np.pi * 22 * t))
+    return metal * teeth * np.sin(np.pi * t / dur) ** 0.6
+
+
+def mech_open(dur=1.1):
+    """Механизированное «отодвигание» интерфейса: двойной лязг фиксатора, пневматика,
+    мощный сервопривод с трещоткой и скрежетом, тяжёлый стоп."""
+    buf = np.zeros(int(SR * (dur + 0.6)))
+    place(buf, latch() * 1.0, 0.0)
+    place(buf, thud() * 0.7, 0.02)
+    place(buf, latch() * 0.8, 0.09)
+    place(buf, hiss() * 0.45, 0.05)
+    place(buf, thud() * 0.75, 0.30)
+    place(buf, servo(dur - 0.32) * 1.35, 0.32)
+    place(buf, grind(dur - 0.36) * 0.5, 0.34)
+    place(buf, thud() * 0.9, dur)
+    place(buf, latch() * 0.85, dur + 0.02)
+    place(buf, hiss(0.25) * 0.3, dur + 0.04)
+    return buf
+
+
+def crash_impact():
+    """Удар интерфейса о край телефона — с грохотом: суб-удар, хруст, звон металла, осыпающийся дребезг."""
+    n = int(SR * 1.4)
+    t = np.arange(n) / SR
+    sub = np.sin(2 * np.pi * np.cumsum(70 * np.exp(-t * 8) + 38) / SR) * np.exp(-t * 6) * 1.2
+    crunch = lowpass(RNG.standard_normal(n), 2500) * np.exp(-t * 18) * 0.9
+    crash = biquad_bandpass(RNG.standard_normal(n), 4200, 0.7) * np.exp(-t * 7) * 0.35
+    clang = _tone([233, 557, 891, 1307, 1840], 1.4, 4.5, [0.5, 0.42, 0.3, 0.2, 0.12])
+    buf = sub + crunch + crash + clang * 0.55
+    for i, at in enumerate((0.06, 0.11, 0.17, 0.22, 0.3, 0.38, 0.47, 0.58)):
+        place(buf, latch() * (0.6 - i * 0.06), at + RNG.uniform(0, 0.02))
+    place(buf, thud() * 0.5, 0.16)
+    return buf
+
+
+def mech_close(dur=0.28):
+    """Захлопывание: нарастающий свист воздуха + дребезг механизма на скорости."""
+    n = int(SR * dur)
+    t = np.arange(n) / SR
+    rush = sweep_bandpass(RNG.standard_normal(n), 450 + 3800 * (t / dur) ** 2, 1.3) * (t / dur) ** 1.4
     rattle = np.zeros(n)
-    for i, at in enumerate((0.07, 0.13, 0.2, 0.26, 0.33)):
-        rattle_hit = latch() * (0.5 - i * 0.08)
-        place(rattle, rattle_hit, at)
-    return boom * 1.0 + body + metal * 0.5 + rattle * 0.6
+    for at in np.arange(0.0, dur - 0.01, 0.022):
+        k = int(at * SR)
+        m = int(0.003 * SR)
+        rattle[k:k + m] += biquad_bandpass(RNG.standard_normal(m), 2400, 3) * np.hanning(m) * (at / dur)
+    return rush * 1.0 + rattle * 0.5 + grind(dur) * 0.35
+
+
+def impact():
+    return crash_impact()
 
 
 def slam():
-    """Короткая версия: свист захлопывания + удар (если ребёнок прервал сцену тапом)."""
-    buf = np.zeros(int(SR * 1.3))
-    n = int(SR * 0.3)
-    t = np.arange(n) / SR
-    rush = sweep_bandpass(RNG.standard_normal(n), 500 + 3500 * (t / 0.3) ** 2, 1.4) * (t / 0.3) ** 1.5
-    place(buf, rush * 0.9, 0.0)
-    place(buf, impact(), 0.28)
+    """Если ребёнок прервал сцену тапом: захлопывание + удар с грохотом."""
+    buf = np.zeros(int(SR * 1.8))
+    place(buf, mech_close(0.28), 0.0)
+    place(buf, crash_impact(), 0.28)
     return buf
 
 
 def factory():
     """Дорожка «Цеха роботов», синхронная с открытием интерфейса и Lottie-сценой (секунды)."""
-    buf = np.zeros(int(SR * 7.2))
-    # механическое открытие: фиксатор → «клац» → сервопривод → остановка
-    place(buf, latch() * 0.9, 0.0)
-    place(buf, thud() * 0.5 + 0, 0.3)
-    place(buf, servo(0.8) * 0.9, 0.32)
-    place(buf, thud() * 0.55, 1.1)
-    place(buf, latch() * 0.6, 1.12)
+    D = 1.75   # роботы работают на 1,75 с дольше, чем в первой версии
+    buf = np.zeros(int(SR * 10.0))
+    place(buf, mech_open(1.1), 0.0)
     # фон цеха: гул серверов и вентиляторы
     n = len(buf)
     t = np.arange(n) / SR
     hum = (np.sin(2 * np.pi * 60 * t) * 0.5 + np.sin(2 * np.pi * 120 * t) * 0.3) * 0.12
     fans = lowpass(RNG.standard_normal(n), 600) * 0.09
-    amb_env = np.clip((t - 0.5) / 0.6, 0, 1) * np.clip((6.9 - t) / 0.4, 0, 1)
+    amb_env = np.clip((t - 0.5) / 0.6, 0, 1) * np.clip((8.6 - t) / 0.4, 0, 1)
     buf += (hum + fans) * amb_env
-    # клавиатуры (до момента, когда роботы замечают зрителя)
-    for at in np.arange(0.9, 3.2, 0.07):
+    # клавиатуры — пока роботы не заметили зрителя
+    for at in np.arange(0.9, 3.2 + D, 0.07):
         if RNG.random() < 0.65:
             place(buf, latch() * RNG.uniform(0.08, 0.16), at + RNG.uniform(0, 0.03))
-    # компьютерные «бип-боп»
-    for at, f0, f1 in ((1.3, 1200, 1200), (1.42, 1600, 1600), (2.1, 900, 1300), (2.75, 1500, 1100)):
+    for at, f0, f1 in ((1.3, 1200, 1200), (1.42, 1600, 1600), (2.1, 900, 1300), (2.75, 1500, 1100),
+                       (3.4, 1000, 1400), (3.52, 1400, 1400), (4.3, 1300, 900)):
         place(buf, beep(f0, f1, 0.08, 0.18), at)
-    # конвейер: мерные стуки
-    for at in np.arange(1.0, 5.4, 0.5):
+    for at in np.arange(1.0, 5.4 + D, 0.5):
         place(buf, step(0.55) * 0.25, at)
     # робот замечает ребёнка
-    place(buf, beep(520, 900, 0.22, 0.42), 3.2)
-    place(buf, beep(1400, 1400, 0.07, 0.45), 3.45)
-    place(buf, beep(1900, 1900, 0.11, 0.5), 3.55)
+    place(buf, beep(520, 900, 0.22, 0.42), 3.2 + D)
+    place(buf, beep(1400, 1400, 0.07, 0.45), 3.45 + D)
+    place(buf, beep(1900, 1900, 0.11, 0.5), 3.55 + D)
     for at, f0 in ((3.8, 380), (3.86, 300), (3.93, 460)):
-        place(buf, beep(f0, f0 * 1.5, 0.16, 0.25), at)
-    # нервно катится к кнопке: колёса + частые писки
+        place(buf, beep(f0, f0 * 1.5, 0.16, 0.25), at + D)
+    # нервно катится к кнопке
     n2 = int(SR * 1.0)
     t2 = np.arange(n2) / SR
-    rumble = lowpass(RNG.standard_normal(n2), 260) * (0.6 + 0.4 * np.sin(2 * np.pi * 14 * t2)) * np.sin(np.pi * t2 / 1.0)
-    place(buf, rumble * 0.5, 4.2)
+    rumble = lowpass(RNG.standard_normal(n2), 260) * (0.6 + 0.4 * np.sin(2 * np.pi * 14 * t2)) * np.sin(np.pi * t2)
+    place(buf, rumble * 0.5, 4.2 + D)
     for at in np.arange(4.25, 5.2, 0.16):
-        place(buf, beep(1700, 1500, 0.04, 0.18), at)
+        place(buf, beep(1700, 1500, 0.04, 0.18), at + D)
     # кнопка и сирена
-    place(buf, latch() * 0.9, 5.5)
-    place(buf, thud() * 0.7, 5.52)
+    place(buf, latch() * 0.9, 5.5 + D)
+    place(buf, thud() * 0.7, 5.52 + D)
     n3 = int(SR * 1.4)
     t3 = np.arange(n3) / SR
-    f = 740 + 220 * np.sign(np.sin(2 * np.pi * 2.2 * t3)) * 0 + 220 * np.sin(2 * np.pi * 2.2 * t3)
-    siren = beep_like = sum(np.sin(k * 2 * np.pi * np.cumsum(f) / SR) / k for k in (1, 3, 5)) * np.clip((1.4 - t3) / 0.5, 0, 1)
-    place(buf, lowpass(siren, 3000) * 0.28, 5.56)
-    # захлопывание: свист и удар (closeAt 5.75 + 0.28)
-    n4 = int(SR * 0.28)
-    t4 = np.arange(n4) / SR
-    rush = sweep_bandpass(RNG.standard_normal(n4), 500 + 3500 * (t4 / 0.28) ** 2, 1.4) * (t4 / 0.28) ** 1.5
-    place(buf, rush * 0.9, 5.7)
-    place(buf, impact(), 5.98)
+    f = 740 + 220 * np.sin(2 * np.pi * 2.2 * t3)
+    siren = sum(np.sin(k * 2 * np.pi * np.cumsum(f) / SR) / k for k in (1, 3, 5)) * np.clip((1.4 - t3) / 0.5, 0, 1)
+    place(buf, lowpass(siren, 3000) * 0.28, 5.56 + D)
+    # захлопывание и удар (closeAt 7,5 c + 0,28 c)
+    place(buf, mech_close(0.28), 7.45)
+    place(buf, crash_impact() * 1.1, 7.72)
     return room(buf, 0.12)
 
 

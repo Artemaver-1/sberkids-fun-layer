@@ -18,17 +18,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "cdn", "fun-layer", "v1", "assets", "robots.json")
 
 W, H, FR = 390, 844, 60
-OP = 410
+OP = 515
 STEP = 2
 RND = random.Random(4)
 
 # сюжет (кадры, 60 fps). Нажатие кнопки = closeAtMs в конфиге минус ~0,25 c
-NOTICE = 192      # 3,2 c — робот замечает зрителя
-BANG = 206        # «!»
-OTHERS = 228      # остальные оборачиваются
-ROLL0, ROLL1 = 252, 312
-REACH = 318
-PRESS = 330       # 5,5 c — нажатие
+WORK = 105        # +1,75 c — дольше смотрим, как роботы работают
+NOTICE = 192 + WORK   # ≈ 4,95 c — робот замечает зрителя
+BANG = 206 + WORK     # «!»
+OTHERS = 228 + WORK   # остальные оборачиваются
+ROLL0, ROLL1 = 252 + WORK, 312 + WORK
+REACH = 318 + WORK
+PRESS = 330 + WORK    # ≈ 7,25 c — нажатие
 
 FLOORS = [(66, 290), (306, 526), (542, 762)]   # (верх, перекрытие)
 
