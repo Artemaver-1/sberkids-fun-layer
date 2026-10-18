@@ -19,6 +19,55 @@ data class PalmParams(
 data class FlipParams(val down: Double = 0.8, val maxDown: Double = 6.0)
 data class TapParams(val target: String = "settings.version", val taps: Int = 7, val maxGap: Double = 0.8)
 
+data class SpiralParams(val minTurns: Double = 2.0, val minDiameter: Double = 120.0, val minDuration: Double = 0.6,
+                        val maxDuration: Double = 4.0, val directionConsistency: Double = 0.85, val minRadiusChange: Double = 0.35)
+
+data class StrokePoint(val x: Double, val y: Double, val t: Double)
+
+/** Спираль одним штрихом (перенос SpiralDetector.swift): ≥ N витков, вращение в одну сторону, радиус меняется. */
+class SpiralDetector(var params: SpiralParams = SpiralParams()) {
+    sealed interface Result {
+        data class Recognized(val turns: Double) : Result
+        data class Rejected(val why: String) : Result
+    }
+
+    fun evaluate(pts: List<StrokePoint>): Result {
+        if (pts.size < 24) return Result.Rejected("мало точек")
+        val duration = pts.last().t - pts.first().t
+        if (duration < params.minDuration) return Result.Rejected("слишком быстро")
+        if (duration > params.maxDuration) return Result.Rejected("слишком долго")
+        val minX = pts.minOf { it.x }; val maxX = pts.maxOf { it.x }
+        val minY = pts.minOf { it.y }; val maxY = pts.maxOf { it.y }
+        if (maxOf(maxX - minX, maxY - minY) < params.minDiameter) return Result.Rejected("слишком мелко")
+        val cx = (maxX + minX) / 2; val cy = (maxY + minY) / 2
+        var total = 0.0; var pos = 0.0; var neg = 0.0
+        var prev: Double? = null
+        val radii = ArrayList<Double>(pts.size)
+        for (p in pts) {
+            val dx = p.x - cx; val dy = p.y - cy
+            val r = kotlin.math.sqrt(dx * dx + dy * dy)
+            radii += r
+            if (r <= 8) { prev = null; continue }
+            val a = kotlin.math.atan2(dy, dx)
+            prev?.let { pa ->
+                var d = a - pa
+                if (d > Math.PI) d -= 2 * Math.PI
+                if (d < -Math.PI) d += 2 * Math.PI
+                total += d
+                if (d > 0) pos += d else neg -= d
+            }
+            prev = a
+        }
+        val turns = kotlin.math.abs(total) / (2 * Math.PI)
+        if (turns < params.minTurns) return Result.Rejected("витков $turns")
+        if (maxOf(pos, neg) / maxOf(1e-9, pos + neg) < params.directionConsistency) return Result.Rejected("вращение не в одну сторону")
+        val k = maxOf(3, radii.size / 7)
+        val rStart = radii.take(k).average(); val rEnd = radii.takeLast(k).average()
+        if (kotlin.math.abs(rStart - rEnd) / maxOf(1.0, maxOf(rStart, rEnd)) < params.minRadiusChange) return Result.Rejected("это круги, а не спираль")
+        return Result.Recognized(turns)
+    }
+}
+
 /** N нажатий по элементу подряд (как «режим разработчика» Android). */
 class TapSequenceDetector(var params: TapParams = TapParams()) {
     sealed interface Output {

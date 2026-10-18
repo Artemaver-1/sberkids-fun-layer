@@ -10,7 +10,7 @@ import kotlin.math.min
 // Перенос ConfigValidator.swift + Model.swift. Парсер — org.json, он входит в Android SDK:
 // новых зависимостей нет. Тот же JSON, те же лимиты, те же правила, что на iOS.
 
-enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip"), TAP_SEQUENCE("tapSequence");
+enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip"), TAP_SEQUENCE("tapSequence"), SPIRAL("spiral");
     companion object { fun of(s: String?) = entries.firstOrNull { it.raw == s } }
 }
 
@@ -21,6 +21,7 @@ data class Trigger(
     val palm: PalmParams = PalmParams(),
     val flip: FlipParams = FlipParams(),
     val tap: TapParams = TapParams(),
+    val spiral: SpiralParams = SpiralParams(),
 )
 
 /** «Интерфейс отъезжает и открывает сцену» — снимок экрана сдвигается и с ударом возвращается. */
@@ -193,6 +194,12 @@ object ConfigValidator {
                 maxHold = clamp(o.optDouble("maxHoldMs", 6000.0) / 1000, 2.0, 20.0),
             ),
             flip = FlipParams(down = clamp(o.optDouble("downMs", 800.0) / 1000, 0.3, 5.0)),
+            spiral = SpiralParams(
+                minTurns = clamp(o.optDouble("minTurns", 2.0), 1.5, 5.0),
+                minDiameter = clamp(o.optDouble("minDiameter", 120.0), 60.0, 400.0),
+                minDuration = clamp(o.optDouble("minDurationMs", 600.0) / 1000, 0.2, 3.0),
+                maxDuration = clamp(o.optDouble("maxDurationMs", 4000.0) / 1000, 1.0, 10.0),
+            ),
             tap = TapParams(
                 target = o.optString("target", "settings.version").ifEmpty { "settings.version" },
                 taps = o.optInt("taps", 7).coerceIn(2, 15),

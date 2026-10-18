@@ -126,15 +126,11 @@
       "pictogram": "egg.ghosts",
       "screen": "profile",
       "trigger": {
-        "type": "faceDownFlip",
-        "downMs": 700
-      },
-      "fallbackTrigger": {
-        "type": "palm",
-        "minTouches": 3,
-        "minRadius": 24,
-        "holdMs": 900,
-        "maxMovement": 120
+        "type": "spiral",
+        "minTurns": 2,
+        "minDiameter": 120,
+        "minDurationMs": 600,
+        "maxDurationMs": 4000
       },
       "cooldownMs": 5000,
       "variants": [
@@ -144,7 +140,7 @@
           "effect": {
             "durationMs": 8000,
             "sound": "whoo",
-            "interactSound": "giggle",
+            "interactSound": "vanish",
             "haptic": "medium",
             "dim": {
               "color": "#140F33",
@@ -181,11 +177,11 @@
         }
       ],
       "hint": {
-        "riddle": "Призраки боятся света! Там, где живёт твоя аватарка, спрячь телефон экраном вниз — и прислушайся.",
-        "help": "Нажми на свою аватарку. Положи телефон экраном вниз, подожди секунду и переверни обратно. А ещё можно накрыть экран ладошкой.",
+        "riddle": "Призраки живут за порталом! Там, где твоя аватарка, нарисуй пальцем спираль — два витка, не отрывая пальца.",
+        "help": "Нажми на аватарку. На экране профиля нарисуй большую спираль одним движением: минимум два витка.",
         "pictograms": [
           "screen.profile",
-          "gesture.faceDown"
+          "gesture.spiral"
         ]
       }
     },
@@ -279,11 +275,6 @@
       "sha256": "02d46eed06386df54e961e0426292ffff2f30e2744d32f56f0e4f4e3bdc1c34d",
       "bytes": 101472
     },
-    "giggle": {
-      "url": "assets/giggle.wav",
-      "sha256": "f0402f1536b1133b1585f99151b9cd9d437c78f46c474e444a0f36279fd9979d",
-      "bytes": 30912
-    },
     "snowflake": {
       "url": "assets/snowflake.png",
       "sha256": "a1c8094b696cab31c511c7f54425b8384c0d814a00c60921941fa2724faa635b",
@@ -301,13 +292,18 @@
     },
     "factory": {
       "url": "assets/factory.wav",
-      "sha256": "7a457e4e4b886380c910a6cab0d940c87891398e23a9f773b88650971ebed286",
+      "sha256": "6176dd6394cd0a0c088a4ae96e3cc88c3eaccb1a2940a276944f50b3b4a77172",
       "bytes": 441044
     },
     "slam": {
       "url": "assets/slam.wav",
-      "sha256": "555ffdb9e63183ec0b397ec078e509160317fe58eaf88ecfb365b1e1f0ad736f",
+      "sha256": "2a7788050407fb0c84e5ec6214d2b304750f2118903d7c15276800ade146de67",
       "bytes": 79424
+    },
+    "vanish": {
+      "url": "assets/vanish.wav",
+      "sha256": "070097bce195e9be7cb40df5b3317ba0a9ee27ab4a022ad2f395335a393b1498",
+      "bytes": 55168
     }
   }
 }

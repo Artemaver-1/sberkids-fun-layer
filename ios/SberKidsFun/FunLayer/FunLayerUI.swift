@@ -316,6 +316,23 @@ struct EggIcon: View {
     }
 }
 
+struct SpiralShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        let rMax = min(rect.width, rect.height) / 2
+        let steps = 120
+        for i in 0...steps {
+            let k = Double(i) / Double(steps)
+            let a = k * 2.5 * 2 * Double.pi
+            let r = rMax * (1 - 0.85 * k)
+            let pt = CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
+            if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        }
+        return p
+    }
+}
+
 struct BananaShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width, h = rect.height
@@ -409,6 +426,17 @@ struct PictogramView: View {
                     .offset(x: 26 * (1 - cover), y: 4)
                     .opacity(0.3 + 0.7 * cover)
             }
+        case "gesture.spiral":
+            // спираль рисуется от края к центру
+            let cycle = t.truncatingRemainder(dividingBy: 2.4) / 2.4
+            let draw = min(1, cycle / 0.75)
+            SpiralShape()
+                .trim(from: 0, to: draw)
+                .stroke(FunStyle.violet, style: StrokeStyle(lineWidth: 2.6, lineCap: .round))
+                .frame(width: 40, height: 40)
+                .overlay(Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 16)).foregroundColor(Color(red: 0.95, green: 0.72, blue: 0.5))
+                    .offset(x: 14, y: 14))
         case "gesture.tap7":
             // палец стучит, счётчик бежит 1…7
             let cycle = t.truncatingRemainder(dividingBy: 2.6)
@@ -471,6 +499,7 @@ struct PictogramView: View {
         case "gesture.palm": return "Накрой экран ладонью"
         case "gesture.faceDown": return "Положи телефон экраном вниз"
         case "gesture.tap7": return "Нажми 7 раз"
+        case "gesture.spiral": return "Нарисуй спираль"
         case "screen.settings": return "Настройки"
         default: return ""
         }

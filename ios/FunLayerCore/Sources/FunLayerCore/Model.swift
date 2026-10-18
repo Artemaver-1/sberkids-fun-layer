@@ -74,6 +74,7 @@ public enum TriggerKind: String, Sendable, CaseIterable {
     case palm           // накрыть экран ладонью
     case faceDownFlip   // положить экраном вниз и перевернуть
     case tapSequence    // N быстрых нажатий по элементу (как «режим разработчика» на Android)
+    case spiral         // нарисовать пальцем спираль-портал (≥ 2 витков)
 }
 
 public struct Trigger: Sendable, Equatable {
@@ -83,6 +84,17 @@ public struct Trigger: Sendable, Equatable {
     public var palm = PalmParams()
     public var flip = FlipParams()
     public var tap = TapParams()
+    public var spiral = SpiralParams()
+}
+
+public struct SpiralParams: Sendable, Equatable {
+    public var minTurns = 2.0
+    public var minDiameter = 120.0        // pt
+    public var minDuration: TimeInterval = 0.6
+    public var maxDuration: TimeInterval = 4.0
+    public var directionConsistency = 0.85
+    public var minRadiusChange = 0.35     // доля: насколько радиус в начале и в конце различается
+    public init() {}
 }
 
 public struct TapParams: Sendable, Equatable {

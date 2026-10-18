@@ -47,6 +47,7 @@
 | `pullHold` | `distance` (pt, 40–250), `holdMs` | 90 pt, 1000 мс |
 | `palm` | `minTouches` (2–10), `minRadius` (pt), `holdMs`, `maxMovement`, `maxHoldMs` | 3, 30 pt, 1200 мс, 70 pt, 6000 мс |
 | `faceDownFlip` | `downMs` | 800 мс |
+| `spiral` | `minTurns` (1,5–5), `minDiameter` (pt), `minDurationMs`, `maxDurationMs` | 2 витка, 120 pt, 600–4000 мс; плюс вращение в одну сторону ≥ 85 % и смена радиуса ≥ 35 % |
 | `tapSequence` | `target` (элемент, о нажатиях на который сообщает приложение), `taps` (2–15), `maxGapMs` | `settings.version`, 7, 800 мс |
 
 ### Эффект

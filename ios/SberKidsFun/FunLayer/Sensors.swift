@@ -67,6 +67,66 @@ final class MotionSensor {
     }
 }
 
+/// Наблюдатель штрихов: незаметно собирает путь одного пальца и отдаёт его целиком,
+/// когда палец поднят. Ничего не рисует и не перехватывает — кнопки и прокрутка работают как обычно.
+@MainActor
+final class StrokeRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    var onStroke: (([StrokePoint]) -> Void)?
+    private var points: [StrokePoint] = []
+    private var tracking: UITouch?
+
+    init() {
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = false
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+        delegate = self
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        if tracking != nil || (event.allTouches?.count ?? 0) > 1 {
+            tracking = nil; points.removeAll(); state = .failed; return   // второй палец — не рисунок
+        }
+        tracking = touches.first
+        points.removeAll()
+        append(touches.first, event)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let tracking, touches.contains(tracking) else { return }
+        for t in event.coalescedTouches(for: tracking) ?? [tracking] { append(t, event) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let tracking, touches.contains(tracking) else { return }
+        append(tracking, event)
+        let stroke = points
+        self.tracking = nil
+        points.removeAll()
+        state = .failed
+        if stroke.count > 10 { onStroke?(stroke) }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        // прокрутка отменяет касания у кнопок, но не у нас — сюда попадаем только при системной отмене
+        tracking = nil; points.removeAll(); state = .failed
+    }
+
+    override func reset() {
+        super.reset()
+    }
+
+    private func append(_ touch: UITouch?, _ event: UIEvent) {
+        guard let touch, let view else { return }
+        let p = touch.location(in: view)
+        points.append(StrokePoint(x: p.x, y: p.y, t: touch.timestamp))
+        if points.count > 1500 { points.removeFirst(points.count - 1500) }
+    }
+
+    nonisolated func gestureRecognizer(_ g: UIGestureRecognizer,
+                                       shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+}
+
 /// «Ладонь на экране». Вешается на окно приложения и наблюдает за касаниями,
 /// не мешая обычным нажатиям и прокрутке. Как только касания похожи на ладонь,
 /// распознаватель переходит в .began — UIKit отменяет случайные нажатия под ладонью.

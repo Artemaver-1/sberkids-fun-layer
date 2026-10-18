@@ -394,6 +394,22 @@ def whoo():
     return buf
 
 
+def vanish():
+    """Призрак тает от касания: низкое дышащее «у-у-у-у» с лёгкой жутью.
+    Два голоса (второй ниже и чуть расстроен), вибрато, туманный шёпот, тональность уходит вниз."""
+    dur = 0.95
+    a = voice(210, 150, dur, "u", vibrato=5.2, vib_depth=0.05, breath=0.14, attack=0.05, release=0.45)
+    b = voice(157, 108, dur, "o", vibrato=4.6, vib_depth=0.06, breath=0.16, attack=0.08, release=0.5)
+    n = int(SR * 1.25)
+    buf = np.zeros(n)
+    place(buf, a * 0.6, 0.0)
+    place(buf, b * 0.32, 0.03)
+    t = np.arange(n) / SR
+    whisper = sweep_bandpass(RNG.standard_normal(n), 1400 - 900 * np.clip(t / 1.1, 0, 1), 1.1)
+    buf += whisper * 0.12 * np.sin(np.pi * np.clip(t / 1.2, 0, 1)) ** 2
+    return lowpass(room(buf, 0.3), 1900)
+
+
 def giggle():
     """Хихиканье призрака: «хи-хи-хи»."""
     buf = np.zeros(int(SR * 0.7))
@@ -573,6 +589,7 @@ def main():
     write_wav("jungle.wav", jungle())
     write_wav("whoo.wav", whoo())
     write_wav("giggle.wav", giggle())
+    write_wav("vanish.wav", vanish())
     write_wav("factory.wav", factory())
     write_wav("slam.wav", slam())
 

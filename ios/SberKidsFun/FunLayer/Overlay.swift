@@ -89,6 +89,9 @@ struct EffectView: View {
                             case .particles(let field, let image):
                                 EffectDrawing.particles(&ctx, field: field, image: image, alpha: env)
                             case .ghosts(let field):
+                                if let path = runtime.portalPath {
+                                    EffectDrawing.portal(&ctx, path: path, center: runtime.portalCenter, t: t, alpha: env)
+                                }
                                 EffectDrawing.ghosts(&ctx, field: field, look: runtime.lookTarget, t: t, alpha: env)
                             case .lottie:
                                 break
@@ -320,6 +323,40 @@ enum EffectDrawing {
             let s = 2.5 + 4 * h3
             c.translateBy(x: size.width * h1, y: size.height * 0.85 * h2)
             c.fill(starPath(size: s), with: .color(.white))
+        }
+    }
+
+    /// Нарисованная спираль вспыхивает от начала к концу, затем гаснет; в центре — светящийся портал.
+    static func portal(_ ctx: inout GraphicsContext, path pts: [CGPoint], center: CGPoint, t: Double, alpha: Double) {
+        var p = Path()
+        p.addLines(pts)
+        let draw = Ease.outCubic(t / 0.5)
+        let fade = 1 - Ease.clamp01((t - 0.9) / 1.4)
+        guard fade > 0 else { return }
+        let trimmed = p.trimmedPath(from: 0, to: draw)
+        let violet = Color(red: 0.62, green: 0.48, blue: 1)
+        var c = ctx
+        c.opacity = alpha * fade
+        c.stroke(trimmed, with: .color(violet.opacity(0.28)), style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round))
+        c.stroke(trimmed, with: .color(violet.opacity(0.55)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+        c.stroke(trimmed, with: .color(.white), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+        // искра на «голове» линии
+        if draw < 1, let head = trimmed.currentPoint {
+            c.fill(Path(ellipseIn: CGRect(x: head.x - 9, y: head.y - 9, width: 18, height: 18)), with: .color(.white.opacity(0.9)))
+        }
+        // портал: вращающееся кольцо и свечение в центре
+        let open = Ease.outBack((t - 0.35) / 0.6)
+        if t > 0.35 {
+            let r = 46 * open
+            var g = ctx
+            g.opacity = alpha * fade
+            g.fill(Path(ellipseIn: CGRect(x: center.x - r * 1.6, y: center.y - r * 1.6, width: r * 3.2, height: r * 3.2)),
+                   with: .radialGradient(Gradient(colors: [violet.opacity(0.55), violet.opacity(0)]), center: center,
+                                         startRadius: 0, endRadius: r * 1.6))
+            g.translateBy(x: center.x, y: center.y)
+            g.rotate(by: .radians(t * 3))
+            g.stroke(Path(ellipseIn: CGRect(x: -r, y: -r, width: r * 2, height: r * 2)), with: .color(.white.opacity(0.85)),
+                     style: StrokeStyle(lineWidth: 3, dash: [10, 7]))
         }
     }
 

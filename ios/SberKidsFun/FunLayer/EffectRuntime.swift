@@ -27,6 +27,9 @@ final class EffectRuntime: Identifiable {
     var revealSnapshot: UIImage?
     var revealCloseAt: Double = 0
     var reveal: RevealSpec? { decision.variant.effect.reveal }
+    /// Нарисованная спираль: вспыхивает и превращается в портал, из которого вылетают призраки.
+    var portalPath: [CGPoint]?
+    var portalCenter: CGPoint = .zero
     var revealEnd: Double { reveal.map { revealCloseAt + $0.close + $0.settle } ?? 0 }
 
     /// Эффект длится не меньше своей Lottie-анимации — персонаж не исчезает на полпути.

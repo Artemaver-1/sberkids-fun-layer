@@ -69,6 +69,9 @@ final class FunLayer: ObservableObject {
     private let pull = PullHoldDetector()
     private var pullEnabled = false
     private let tapSeq = TapSequenceDetector()
+    private let strokes = StrokeRecognizer()
+    private let spiral = SpiralDetector()
+    private var pendingPortal: [CGPoint]?
     private var tapEnabled = false
     private var tapHintTask: Task<Void, Never>?
     private weak var appWindow: UIWindow?
@@ -97,6 +100,9 @@ final class FunLayer: ObservableObject {
         appWindow = window
 
         window.addGestureRecognizer(palm)
+        window.addGestureRecognizer(strokes)
+        strokes.isEnabled = false
+        strokes.onStroke = { [weak self] pts in self?.strokeFinished(pts) }
         palm.isEnabled = false
         palm.onProgress = { [weak self] p in self?.palmChanged(p) }
         palm.onArmed = { [weak self] in self?.palmArmedNow() }
@@ -271,6 +277,7 @@ final class FunLayer: ObservableObject {
             shakeEggActive = false
             pullEnabled = false
             tapEnabled = false
+            strokes.isEnabled = false
             return
         }
         let t = engine.activeTriggers(on: currentScreen, now: Date())
@@ -283,6 +290,8 @@ final class FunLayer: ObservableObject {
         pullEnabled = t[.pullHold] != nil
         if let p = t[.tapSequence] { tapSeq.params = p.tap }
         tapEnabled = t[.tapSequence] != nil
+        if let p = t[.spiral] { spiral.params = p.spiral }
+        strokes.isEnabled = t[.spiral] != nil
     }
 
     /// Приложение сообщает о нажатии на элемент (одна строка в обработчике нажатия).
@@ -306,6 +315,20 @@ final class FunLayer: ObservableObject {
             trigger(.tapSequence)
         case .none:
             break
+        }
+    }
+
+    /// Палец поднят: проверяем, не спираль ли это. Ничего не показываем, пока фигура не распознана.
+    private func strokeFinished(_ pts: [StrokePoint]) {
+        guard effect == nil, sheet == nil else { return }
+        switch spiral.evaluate(pts) {
+        case .recognized(let turns):
+            log(String(format: "spiral recognized, %.2f turns", turns))
+            pendingPortal = pts.map { CGPoint(x: $0.x, y: $0.y) }
+            trigger(.spiral)
+            pendingPortal = nil
+        case .rejected(let why):
+            if pts.count > 40 { log("stroke rejected: \(why)") }
         }
     }
 
@@ -446,6 +469,11 @@ final class FunLayer: ObservableObject {
         teaserTask?.cancel()
         let runtime = EffectRuntime(decision: d, size: overlaySize, config: config, assets: loader.assets)
         if runtime.reveal != nil { runtime.revealSnapshot = snapshotApp() }
+        if let path = pendingPortal, !path.isEmpty {
+            runtime.portalPath = path
+            let xs = path.map(\.x), ys = path.map(\.y)
+            runtime.portalCenter = CGPoint(x: (xs.max()! + xs.min()!) / 2, y: (ys.max()! + ys.min()!) / 2)
+        }
         log("runtime ready")
         withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
         updateSensors()
@@ -547,7 +575,10 @@ final class FunLayer: ObservableObject {
         if effect.tap(at: point) {
             Haptics.tick()
             if let s = effect.decision.variant.effect.interactSound {
-                sounds.playVaried(loader.assets.localURL(forKey: s, in: config), volume: 0.7)
+                // призраки: узкий разброс, чтобы «у-у-у» не превращалось в писк
+                let ghostly = effect.layers.contains { if case .ghosts = $0 { return true } else { return false } }
+                sounds.playVaried(loader.assets.localURL(forKey: s, in: config), volume: ghostly ? 0.85 : 0.7,
+                                  rates: ghostly ? 0.92...1.04 : 0.82...1.25)
             }
         }
     }

@@ -252,6 +252,37 @@ struct DetectorTests {
         #expect(d.feed(target: "settings.version", time: 12) == .progress(done: 1, left: 6))
     }
 
+    func spiral(turns: Double, r0: Double, r1: Double, duration: Double = 2, cx: Double = 200, cy: Double = 400) -> [StrokePoint] {
+        let n = 160
+        return (0..<n).map { i in
+            let p = Double(i) / Double(n - 1)
+            let a = p * turns * 2 * .pi
+            let r = r0 + (r1 - r0) * p
+            return StrokePoint(x: cx + r * cos(a), y: cy + r * sin(a), t: p * duration)
+        }
+    }
+
+    @Test("Спираль в 2,5 витка распознаётся (снаружи внутрь и изнутри наружу)")
+    func spiralRecognized() {
+        let d = SpiralDetector()
+        if case .recognized(let turns) = d.evaluate(spiral(turns: 2.5, r0: 120, r1: 15)) { #expect(turns > 2.4) } else { Issue.record("не распознана") }
+        if case .recognized = d.evaluate(spiral(turns: -2.3, r0: 12, r1: 110)) {} else { Issue.record("обратная не распознана") }
+    }
+
+    @Test("Не спираль: круги, мелко, быстро, мало витков, прокрутка, зигзаг")
+    func spiralRejected() {
+        let d = SpiralDetector()
+        func rejected(_ pts: [StrokePoint]) -> Bool { if case .rejected = d.evaluate(pts) { return true } else { return false } }
+        #expect(rejected(spiral(turns: 2.5, r0: 90, r1: 88)))                 // круги
+        #expect(rejected(spiral(turns: 2.5, r0: 40, r1: 5)))                  // мелко
+        #expect(rejected(spiral(turns: 2.5, r0: 120, r1: 15, duration: 0.3)))  // слишком быстро
+        #expect(rejected(spiral(turns: 1.4, r0: 120, r1: 15)))                // мало витков
+        let swipe = (0..<60).map { StrokePoint(x: 200, y: 700 - Double($0) * 8, t: Double($0) * 0.01) }
+        #expect(rejected(swipe))
+        let zigzag = (0..<80).map { StrokePoint(x: 60 + Double($0) * 3.5, y: 400 + ($0 % 10 < 5 ? 1 : -1) * 60, t: Double($0) * 0.02) }
+        #expect(rejected(zigzag))
+    }
+
     @Test("Экраном вниз и обратно")
     func flip() {
         let d = FaceDownFlipDetector()
@@ -277,7 +308,7 @@ struct EngineTests {
         let now = Date()
         #expect(Set(e.activeTriggers(on: "main", now: now).keys) == [.shake])
         #expect(Set(e.activeTriggers(on: "content", now: now).keys) == [.pullHold])
-        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.palm, .faceDownFlip])
+        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.spiral])
         #expect(Set(e.activeTriggers(on: "settings", now: now).keys) == [.tapSequence])
         #expect(e.activeTriggers(on: "transfer", now: now).isEmpty)
         #expect(e.activeTriggers(on: "piggy", now: now).isEmpty)
@@ -307,7 +338,7 @@ struct EngineTests {
     func allFound() throws {
         let e = try engine()
         let t = Date()
-        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.palm, "profile"), (.tapSequence, "settings")] {
+        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.spiral, "profile"), (.tapSequence, "settings")] {
             #expect(e.handle(kind, on: screen, now: t) != nil)
             e.effectFinished(now: t)
         }

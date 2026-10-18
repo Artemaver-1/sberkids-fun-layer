@@ -33,7 +33,7 @@ final class SoundPlayer {
     /// высота тона — быстрые касания не обрывают друг друга и не звучат одинаково.
     private var oneShots: [AVAudioPlayer] = []
 
-    func playVaried(_ url: URL?, volume: Float = 0.7) {
+    func playVaried(_ url: URL?, volume: Float = 0.7, rates: ClosedRange<Float> = 0.82...1.25) {
         guard let url, let p = try? AVAudioPlayer(contentsOf: url) else { return }
         if !configured {
             try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
@@ -41,7 +41,7 @@ final class SoundPlayer {
         }
         oneShots.removeAll { !$0.isPlaying }
         p.enableRate = true
-        p.rate = Float.random(in: 0.82...1.25)
+        p.rate = Float.random(in: rates)
         p.volume = volume
         p.play()
         oneShots.append(p)

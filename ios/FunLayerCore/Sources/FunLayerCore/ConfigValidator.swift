@@ -207,6 +207,10 @@ public enum ConfigValidator {
         if let v = t.maxMovement { trig.palm.maxMovement = clamp(v, 10...300) }
         if let v = t.maxHoldMs { trig.palm.maxHold = clamp(Double(v) / 1000, 2...20) }
         if let v = t.downMs { trig.flip.down = clamp(Double(v) / 1000, 0.3...5) }
+        if let v = t.minTurns { trig.spiral.minTurns = clamp(v, 1.5...5) }
+        if let v = t.minDiameter { trig.spiral.minDiameter = clamp(v, 60...400) }
+        if let v = t.minDurationMs { trig.spiral.minDuration = clamp(Double(v) / 1000, 0.2...3) }
+        if let v = t.maxDurationMs { trig.spiral.maxDuration = clamp(Double(v) / 1000, 1...10) }
         if let v = t.target, !v.isEmpty { trig.tap.target = v }
         if let v = t.taps { trig.tap.taps = max(2, min(v, 15)) }
         if let v = t.maxGapMs { trig.tap.maxGap = clamp(Double(v) / 1000, 0.2...2) }

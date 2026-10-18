@@ -182,6 +182,69 @@ public final class PalmDetector {
     }
 }
 
+// MARK: - Спираль
+
+public struct StrokePoint: Sendable, Equatable {
+    public var x: Double
+    public var y: Double
+    public var t: Double
+    public init(x: Double, y: Double, t: Double) { self.x = x; self.y = y; self.t = t }
+}
+
+/// Спираль одним непрерывным штрихом: ≥ N витков вокруг центра, вращение в одну сторону,
+/// радиус заметно меняется (это спираль, а не просто круги), крупно и за разумное время.
+/// Случайно при обычном пользовании такое не нарисовать.
+public final class SpiralDetector {
+    public enum Result: Equatable {
+        case recognized(turns: Double)
+        case rejected(String)
+    }
+
+    public var params: SpiralParams
+
+    public init(params: SpiralParams = SpiralParams()) { self.params = params }
+
+    public func evaluate(_ pts: [StrokePoint]) -> Result {
+        guard pts.count >= 24, let first = pts.first, let last = pts.last else { return .rejected("мало точек") }
+        let duration = last.t - first.t
+        guard duration >= params.minDuration else { return .rejected("слишком быстро") }
+        guard duration <= params.maxDuration else { return .rejected("слишком долго") }
+        let xs = pts.map(\.x), ys = pts.map(\.y)
+        let w = xs.max()! - xs.min()!, h = ys.max()! - ys.min()!
+        guard max(w, h) >= params.minDiameter else { return .rejected("слишком мелко") }
+        let cx = (xs.max()! + xs.min()!) / 2, cy = (ys.max()! + ys.min()!) / 2
+
+        var total = 0.0, positive = 0.0, negative = 0.0
+        var prev: Double?
+        var radii: [Double] = []
+        for p in pts {
+            let dx = p.x - cx, dy = p.y - cy
+            let r = (dx * dx + dy * dy).squareRoot()
+            radii.append(r)
+            guard r > 8 else { prev = nil; continue }   // у самого центра угол неустойчив
+            let a = atan2(dy, dx)
+            if let pa = prev {
+                var d = a - pa
+                if d > .pi { d -= 2 * .pi }
+                if d < -.pi { d += 2 * .pi }
+                total += d
+                if d > 0 { positive += d } else { negative -= d }
+            }
+            prev = a
+        }
+        let turns = abs(total) / (2 * .pi)
+        guard turns >= params.minTurns else { return .rejected(String(format: "витков %.2f", turns)) }
+        let consistency = max(positive, negative) / max(1e-9, positive + negative)
+        guard consistency >= params.directionConsistency else { return .rejected("вращение не в одну сторону") }
+        let k = max(3, radii.count / 7)
+        let rStart = radii.prefix(k).reduce(0, +) / Double(k)
+        let rEnd = radii.suffix(k).reduce(0, +) / Double(k)
+        let change = abs(rStart - rEnd) / max(1, max(rStart, rEnd))
+        guard change >= params.minRadiusChange else { return .rejected("это круги, а не спираль") }
+        return .recognized(turns: turns)
+    }
+}
+
 // MARK: - Серия нажатий
 
 /// N нажатий по одному элементу, между нажатиями не больше `maxGap`.

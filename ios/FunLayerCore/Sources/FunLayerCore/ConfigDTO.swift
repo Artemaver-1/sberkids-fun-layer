@@ -75,6 +75,11 @@ public struct TriggerDTO: Codable, Sendable {
     public var maxHoldMs: Int?
     // faceDownFlip
     public var downMs: Int?
+    // spiral
+    public var minTurns: Double?
+    public var minDiameter: Double?
+    public var minDurationMs: Int?
+    public var maxDurationMs: Int?
     // tapSequence
     public var target: String?
     public var taps: Int?
