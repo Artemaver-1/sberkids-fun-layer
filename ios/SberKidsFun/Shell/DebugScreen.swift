@@ -9,7 +9,7 @@ struct DebugScreen: View {
     @ObservedObject private var fun = FunLayer.shared
     @AppStorage("fun_layer.debug.url") private var urlText = DebugScreen.defaultURL
 
-    static let defaultURL = "https://YOUR_GITHUB_LOGIN.github.io/sberkids-fun-layer/fun-layer/v1/config.json"
+    static let defaultURL = "https://artemaver-1.github.io/sberkids-fun-layer/fun-layer/v1/config.json"
 
     private let presets: [(String, String)] = [
         ("config", "Осень (по умолчанию)"),

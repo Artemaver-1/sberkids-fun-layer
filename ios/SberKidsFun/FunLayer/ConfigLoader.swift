@@ -173,7 +173,12 @@ final class ConfigLoader {
 
     /// Загрузка с CDN (ETag → 304 не качаем повторно), валидация, докачка ресурсов, атомарная активация.
     func fetchRemote(_ url: URL) async -> Loaded? {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        // метка времени в запросе — мимо кэша CDN: правка конфига видна сразу после выкладки,
+        // ETag при этом работает как прежде (не изменилось — 304, ничего не качаем)
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let query = (components?.queryItems ?? []) + [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
+        components?.queryItems = query
+        var request = URLRequest(url: components?.url ?? url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         if let etag = defaults.string(forKey: Key.etag + url.absoluteString) {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
