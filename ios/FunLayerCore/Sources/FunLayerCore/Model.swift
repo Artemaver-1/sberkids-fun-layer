@@ -74,7 +74,8 @@ public enum TriggerKind: String, Sendable, CaseIterable {
     case palm           // накрыть экран ладонью
     case faceDownFlip   // положить экраном вниз и перевернуть
     case tapSequence    // N быстрых нажатий по элементу (как «режим разработчика» на Android)
-    case spiral         // нарисовать пальцем спираль-портал (≥ 2 витков)
+    case spiral         // нарисовать пальцем спираль (≥ 2 витков, радиус меняется)
+    case circles        // покрутить пальцем по экрану 2–3 круга одним движением
 }
 
 public struct Trigger: Sendable, Equatable {

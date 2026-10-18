@@ -305,6 +305,22 @@ struct DetectorTests {
         #expect(!d.looksLikeSpiral(swipe))
     }
 
+    @Test("Круги: 2–3 оборота одним движением — да; полтора оборота, свайп, мелко — нет")
+    func circles() {
+        var p = SpiralParams()
+        p.minTurns = 1.9
+        p.minDiameter = 100
+        p.minRadiusTrend = 0
+        let d = SpiralDetector(params: p)
+        if case .recognized = d.evaluate(spiral(turns: 2.4, r0: 90, r1: 85)) {} else { Issue.record("круги не распознаны") }
+        if case .recognized = d.evaluate(spiral(turns: -3, r0: 80, r1: 95)) {} else { Issue.record("обратные круги не распознаны") }
+        func rejected(_ pts: [StrokePoint]) -> Bool { if case .rejected = d.evaluate(pts) { return true } else { return false } }
+        #expect(rejected(spiral(turns: 1.4, r0: 90, r1: 90)))
+        #expect(rejected(spiral(turns: 2.5, r0: 35, r1: 35)))
+        let swipe = (0..<60).map { StrokePoint(x: 200, y: 700 - Double($0) * 8, t: Double($0) * 0.01) }
+        #expect(rejected(swipe))
+    }
+
     @Test("Экраном вниз и обратно")
     func flip() {
         let d = FaceDownFlipDetector()
@@ -330,7 +346,7 @@ struct EngineTests {
         let now = Date()
         #expect(Set(e.activeTriggers(on: "main", now: now).keys) == [.shake])
         #expect(Set(e.activeTriggers(on: "content", now: now).keys) == [.pullHold])
-        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.spiral])
+        #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.circles])
         #expect(Set(e.activeTriggers(on: "settings", now: now).keys) == [.tapSequence])
         #expect(e.activeTriggers(on: "transfer", now: now).isEmpty)
         #expect(e.activeTriggers(on: "piggy", now: now).isEmpty)
@@ -360,7 +376,7 @@ struct EngineTests {
     func allFound() throws {
         let e = try engine()
         let t = Date()
-        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.spiral, "profile"), (.tapSequence, "settings")] {
+        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.circles, "profile"), (.tapSequence, "settings")] {
             #expect(e.handle(kind, on: screen, now: t) != nil)
             e.effectFinished(now: t)
         }

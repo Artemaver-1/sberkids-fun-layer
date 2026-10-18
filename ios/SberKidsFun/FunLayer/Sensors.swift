@@ -72,10 +72,6 @@ final class MotionSensor {
 @MainActor
 final class StrokeRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     var onStroke: (([StrokePoint]) -> Void)?
-    /// Каждое движение пальца — для распознавания «на лету» и светящейся змейки.
-    var onMove: (([StrokePoint]) -> Void)?
-    /// Слой уже узнал фигуру — до отрыва пальца штрих больше не нужен.
-    var consumed = false
     private var points: [StrokePoint] = []
     private var tracking: UITouch?
 
@@ -92,7 +88,6 @@ final class StrokeRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
             tracking = nil; points.removeAll(); state = .failed; return   // второй палец — не рисунок
         }
         tracking = touches.first
-        consumed = false
         points.removeAll()
         append(touches.first, event)
     }
@@ -100,7 +95,6 @@ final class StrokeRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let tracking, touches.contains(tracking) else { return }
         for t in event.coalescedTouches(for: tracking) ?? [tracking] { append(t, event) }
-        if !consumed { onMove?(points) }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -110,8 +104,7 @@ final class StrokeRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
         self.tracking = nil
         points.removeAll()
         state = .failed
-        if stroke.count > 10, !consumed { onStroke?(stroke) }
-        consumed = false
+        if stroke.count > 10 { onStroke?(stroke) }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {

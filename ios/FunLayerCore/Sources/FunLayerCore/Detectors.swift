@@ -271,7 +271,7 @@ public final class SpiralDetector {
         guard s.diameter >= params.minDiameter else { return .rejected("слишком мелко") }
         guard s.turns >= params.minTurns else { return .rejected(String(format: "витков %.2f", s.turns)) }
         guard s.consistency >= params.directionConsistency else { return .rejected("вращение не в одну сторону") }
-        guard s.trend >= params.minRadiusTrend else { return .rejected(String(format: "это круги, а не спираль (%.2f)", s.trend)) }
+        guard params.minRadiusTrend <= 0 || s.trend >= params.minRadiusTrend else { return .rejected(String(format: "это круги, а не спираль (%.2f)", s.trend)) }
         return .recognized(turns: s.turns)
     }
 }

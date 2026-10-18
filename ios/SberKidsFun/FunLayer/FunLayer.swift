@@ -71,10 +71,7 @@ final class FunLayer: ObservableObject {
     private let tapSeq = TapSequenceDetector()
     private let strokes = StrokeRecognizer()
     private let spiral = SpiralDetector()
-    private var pendingPortal: [CGPoint]?
-    /// Светящаяся змейка за пальцем (только когда штрих уже похож на спираль).
-    private(set) var trail: [StrokePoint] = []
-    @Published private(set) var trailActive = false
+
     private var tapEnabled = false
     private var tapHintTask: Task<Void, Never>?
     private weak var appWindow: UIWindow?
@@ -106,7 +103,7 @@ final class FunLayer: ObservableObject {
         window.addGestureRecognizer(strokes)
         strokes.isEnabled = false
         strokes.onStroke = { [weak self] pts in self?.strokeFinished(pts) }
-        strokes.onMove = { [weak self] pts in self?.strokeMoved(pts) }
+
         palm.isEnabled = false
         palm.onProgress = { [weak self] p in self?.palmChanged(p) }
         palm.onArmed = { [weak self] in self?.palmArmedNow() }
@@ -294,8 +291,8 @@ final class FunLayer: ObservableObject {
         pullEnabled = t[.pullHold] != nil
         if let p = t[.tapSequence] { tapSeq.params = p.tap }
         tapEnabled = t[.tapSequence] != nil
-        if let p = t[.spiral] { spiral.params = p.spiral }
-        strokes.isEnabled = t[.spiral] != nil
+        if let p = t[.circles] ?? t[.spiral] { spiral.params = p.spiral }
+        strokes.isEnabled = t[.circles] != nil || t[.spiral] != nil
     }
 
     /// Приложение сообщает о нажатии на элемент (одна строка в обработчике нажатия).
@@ -322,34 +319,13 @@ final class FunLayer: ObservableObject {
         }
     }
 
-    /// Палец ещё рисует: если штрих похож на спираль — показываем змейку; набрал витки — сразу запускаем.
-    private func strokeMoved(_ pts: [StrokePoint]) {
-        guard effect == nil, sheet == nil else { return }
-        if trailActive || spiral.looksLikeSpiral(pts) {
-            trail = pts
-            if !trailActive { trailActive = true }
-        }
-        guard trailActive, case .recognized(let turns) = spiral.evaluate(pts) else { return }
-        log(String(format: "spiral recognized on the fly, %.2f turns", turns))
-        strokes.consumed = true
-        trailActive = false
-        trail = []
-        pendingPortal = pts.map { CGPoint(x: $0.x, y: $0.y) }
-        trigger(.spiral)
-        pendingPortal = nil
-    }
-
-    /// Палец поднят: последняя проверка и гасим змейку.
+    /// Палец поднят: были ли это 2–3 круга одним движением. Во время рисования ничего не показываем.
     private func strokeFinished(_ pts: [StrokePoint]) {
-        trailActive = false
-        trail = []
         guard effect == nil, sheet == nil else { return }
         switch spiral.evaluate(pts) {
         case .recognized(let turns):
-            log(String(format: "spiral recognized, %.2f turns", turns))
-            pendingPortal = pts.map { CGPoint(x: $0.x, y: $0.y) }
-            trigger(.spiral)
-            pendingPortal = nil
+            log(String(format: "circles recognized, %.2f turns", turns))
+            trigger(.circles)
         case .rejected(let why):
             if pts.count > 40 { log("stroke rejected: \(why)") }
         }
@@ -492,11 +468,7 @@ final class FunLayer: ObservableObject {
         teaserTask?.cancel()
         let runtime = EffectRuntime(decision: d, size: overlaySize, config: config, assets: loader.assets)
         if runtime.reveal != nil { runtime.revealSnapshot = snapshotApp() }
-        if let path = pendingPortal, !path.isEmpty {
-            runtime.portalPath = path
-            let xs = path.map(\.x), ys = path.map(\.y)
-            runtime.portalCenter = CGPoint(x: (xs.max()! + xs.min()!) / 2, y: (ys.max()! + ys.min()!) / 2)
-        }
+
         log("runtime ready")
         withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
         updateSensors()

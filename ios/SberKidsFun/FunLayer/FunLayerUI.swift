@@ -426,6 +426,16 @@ struct PictogramView: View {
                     .offset(x: 26 * (1 - cover), y: 4)
                     .opacity(0.3 + 0.7 * cover)
             }
+        case "gesture.circles":
+            // палец кружит по экрану
+            let a = t * 2 * Double.pi * 0.9
+            ZStack {
+                Circle().stroke(FunStyle.violet.opacity(0.35), style: StrokeStyle(lineWidth: 2.4, dash: [4, 4]))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 18)).foregroundColor(Color(red: 0.95, green: 0.72, blue: 0.5))
+                    .offset(x: 17 * cos(a) + 5, y: 17 * sin(a) + 7)
+            }
         case "gesture.spiral":
             // спираль рисуется от края к центру
             let cycle = t.truncatingRemainder(dividingBy: 2.4) / 2.4
@@ -500,6 +510,7 @@ struct PictogramView: View {
         case "gesture.faceDown": return "Положи телефон экраном вниз"
         case "gesture.tap7": return "Нажми 7 раз"
         case "gesture.spiral": return "Нарисуй спираль"
+        case "gesture.circles": return "Покрути пальцем 2–3 круга"
         case "screen.settings": return "Настройки"
         default: return ""
         }

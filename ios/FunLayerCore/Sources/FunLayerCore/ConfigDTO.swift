@@ -77,6 +77,7 @@ public struct TriggerDTO: Codable, Sendable {
     public var downMs: Int?
     // spiral
     public var minTurns: Double?
+    public var consistency: Double?
     public var minDiameter: Double?
     public var minDurationMs: Int?
     public var maxDurationMs: Int?
