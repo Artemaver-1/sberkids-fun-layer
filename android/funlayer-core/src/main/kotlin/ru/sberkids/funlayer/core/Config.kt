@@ -10,7 +10,7 @@ import kotlin.math.min
 // Перенос ConfigValidator.swift + Model.swift. Парсер — org.json, он входит в Android SDK:
 // новых зависимостей нет. Тот же JSON, те же лимиты, те же правила, что на iOS.
 
-enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip");
+enum class TriggerKind(val raw: String) { SHAKE("shake"), PULL_HOLD("pullHold"), PALM("palm"), FACE_DOWN_FLIP("faceDownFlip"), TAP_SEQUENCE("tapSequence");
     companion object { fun of(s: String?) = entries.firstOrNull { it.raw == s } }
 }
 
@@ -20,7 +20,11 @@ data class Trigger(
     val pull: PullHoldParams = PullHoldParams(),
     val palm: PalmParams = PalmParams(),
     val flip: FlipParams = FlipParams(),
+    val tap: TapParams = TapParams(),
 )
+
+/** «Интерфейс отъезжает и открывает сцену» — снимок экрана сдвигается и с ударом возвращается. */
+data class RevealSpec(val toRight: Boolean = true, val open: Double = 1.1, val closeAt: Double = 5.7, val close: Double = 0.28)
 
 data class Hint(val riddle: String, val help: String, val pictograms: List<String>)
 
@@ -40,6 +44,7 @@ sealed interface EffectLayer {
 data class Effect(
     val duration: Double, val dimColor: Long, val dimOpacity: Double, val layers: List<EffectLayer>,
     val sound: String?, val interactSound: String?, val haptic: String,
+    val reveal: RevealSpec? = null,
 )
 
 data class Variant(val id: String, val weight: Double, val effect: Effect)
@@ -188,6 +193,11 @@ object ConfigValidator {
                 maxHold = clamp(o.optDouble("maxHoldMs", 6000.0) / 1000, 2.0, 20.0),
             ),
             flip = FlipParams(down = clamp(o.optDouble("downMs", 800.0) / 1000, 0.3, 5.0)),
+            tap = TapParams(
+                target = o.optString("target", "settings.version").ifEmpty { "settings.version" },
+                taps = o.optInt("taps", 7).coerceIn(2, 15),
+                maxGap = clamp(o.optDouble("maxGapMs", 800.0) / 1000, 0.2, 2.0),
+            ),
         )
     }
 
@@ -242,6 +252,15 @@ object ConfigValidator {
             sound = o.optString("sound").takeIf { it.isNotEmpty() },
             interactSound = o.optString("interactSound").takeIf { it.isNotEmpty() },
             haptic = o.optString("haptic", "light"),
+            reveal = o.optJSONObject("reveal")?.let { r ->
+                val open = clamp(r.optDouble("openMs", 1100.0) / 1000, 0.3, 3.0)
+                RevealSpec(
+                    toRight = r.optString("direction", "right") != "left",
+                    open = open,
+                    closeAt = clamp(r.optDouble("closeAtMs", 5700.0) / 1000, open + 0.5, 9.0),
+                    close = clamp(r.optDouble("closeMs", 280.0) / 1000, 0.1, 1.5),
+                )
+            },
         )
     }
 

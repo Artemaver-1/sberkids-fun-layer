@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import FunLayerCore
 
-let policy = ScreenPolicy(knownScreens: ["main", "content", "profile", "piggy", "tasks", "transfer"])
+let policy = ScreenPolicy(knownScreens: ["main", "content", "profile", "settings", "piggy", "tasks", "transfer"])
 
 /// Настоящий конфиг из cdn/ — тесты гарантируют, что то, что уезжает на CDN, валидно.
 func productionConfigData(_ name: String = "config.json") throws -> Data {
@@ -25,8 +25,12 @@ struct ConfigTests {
                                            baseURL: URL(string: "https://example.github.io/repo/fun-layer/v1/\(name)"))
             #expect(r.warnings.isEmpty, "\(name): \(r.warnings)")
             let c = try #require(r.config)
-            #expect(c.eggs.count == 3)
-            #expect(c.announcedTotal == 5)
+            #expect(c.eggs.count == 4)
+            #expect(c.announcedTotal == 4)
+            let robots = try #require(c.egg(id: "robots"))
+            #expect(robots.trigger.kind == .tapSequence)
+            #expect(robots.trigger.tap.taps == 7)
+            #expect(robots.variants[0].effect.reveal?.direction == .right)
         }
     }
 
@@ -233,6 +237,21 @@ struct DetectorTests {
         #expect(d.feed(touches: [], time: 0.6) == .cancelled)
     }
 
+    @Test("Семь быстрых тапов по версии — срабатывает; пауза сбрасывает счёт")
+    func tapSequence() {
+        let d = TapSequenceDetector()
+        var t = 0.0
+        for i in 1...6 {
+            #expect(d.feed(target: "settings.version", time: t) == .progress(done: i, left: 7 - i))
+            t += 0.3
+        }
+        #expect(d.feed(target: "other", time: t) == .none)
+        #expect(d.feed(target: "settings.version", time: t) == .triggered)
+        _ = d.feed(target: "settings.version", time: 10)
+        _ = d.feed(target: "settings.version", time: 10.3)
+        #expect(d.feed(target: "settings.version", time: 12) == .progress(done: 1, left: 6))
+    }
+
     @Test("Экраном вниз и обратно")
     func flip() {
         let d = FaceDownFlipDetector()
@@ -259,6 +278,7 @@ struct EngineTests {
         #expect(Set(e.activeTriggers(on: "main", now: now).keys) == [.shake])
         #expect(Set(e.activeTriggers(on: "content", now: now).keys) == [.pullHold])
         #expect(Set(e.activeTriggers(on: "profile", now: now).keys) == [.palm, .faceDownFlip])
+        #expect(Set(e.activeTriggers(on: "settings", now: now).keys) == [.tapSequence])
         #expect(e.activeTriggers(on: "transfer", now: now).isEmpty)
         #expect(e.activeTriggers(on: "piggy", now: now).isEmpty)
     }
@@ -270,7 +290,7 @@ struct EngineTests {
         let d1 = try #require(e.handle(.shake, on: "main", now: t0))
         #expect(d1.egg.id == "bubbles")
         #expect(d1.isFirstFind)
-        #expect(d1.foundCount == 1 && d1.total == 5)
+        #expect(d1.foundCount == 1 && d1.total == 4)
         // пока играет — второй эффект не стартует
         #expect(e.handle(.shake, on: "main", now: t0) == nil)
         e.effectFinished(now: t0)
@@ -283,16 +303,16 @@ struct EngineTests {
         #expect(again.foundCount == 1)
     }
 
-    @Test("Нашёл все три из пяти — «скоро новые»")
-    func comingSoon() throws {
+    @Test("Нашёл все четыре — «все секреты найдены»")
+    func allFound() throws {
         let e = try engine()
         let t = Date()
-        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.palm, "profile")] {
+        for (kind, screen) in [(TriggerKind.shake, "main"), (.pullHold, "content"), (.palm, "profile"), (.tapSequence, "settings")] {
             #expect(e.handle(kind, on: screen, now: t) != nil)
             e.effectFinished(now: t)
         }
-        #expect(e.foundCount == 3)
-        #expect(e.nextHint(now: t).kind == .comingSoon)
+        #expect(e.foundCount == 4)
+        #expect(e.nextHint(now: t).kind == .allFound)
     }
 
     @Test("Прогресс переживает перезапуск приложения")
@@ -367,5 +387,24 @@ struct SimulationTests {
         #expect(EffectEnvelope.alpha(time: 0, duration: 5) == 0)
         #expect(EffectEnvelope.alpha(time: 2.5, duration: 5) == 1)
         #expect(EffectEnvelope.alpha(time: 5, duration: 5) == 0)
+    }
+}
+
+@Suite("Сдвиг интерфейса")
+struct RevealTests {
+    @Test("Параметры сдвига разбираются и ограничиваются")
+    func revealClamp() throws {
+        let json = #"""
+        {"schemaVersion":1,"eggs":[{"id":"r","screen":"settings","trigger":{"type":"tapSequence","taps":99},
+          "variants":[{"effect":{"reveal":{"direction":"left","openMs":100,"closeAtMs":99999,"closeMs":5000},
+            "layers":[{"type":"particles","asset":"builtin:bubble"}]}}]}]}
+        """#
+        let egg = try #require(loadConfig(json).config?.eggs.first)
+        #expect(egg.trigger.tap.taps == 15)
+        let r = try #require(egg.variants[0].effect.reveal)
+        #expect(r.direction == .left)
+        #expect(r.open == 0.3)
+        #expect(r.closeAt == 9)
+        #expect(r.close == 1.5)
     }
 }

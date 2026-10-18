@@ -166,7 +166,10 @@ struct FigmaScreen: View {
             .frame(width: spot.rect.width * scale, height: spot.rect.height * scale)
             .offset(x: spot.rect.minX * scale, y: spot.rect.minY * scale)
         if spot.action == .debug {
-            area.onLongPressGesture(minimumDuration: 1.0) { onAction(spot.action) }
+            // «Версия приложения»: быстрые тапы — пасхалка с роботами, долгое нажатие — меню разработчика.
+            // В СберKids это одна строка в обработчике нажатия: FunLayer.shared.reportTap("settings.version")
+            area.onTapGesture { FunLayer.shared.reportTap("settings.version") }
+                .onLongPressGesture(minimumDuration: 1.0) { onAction(spot.action) }
         } else {
             area.onTapGesture { onAction(spot.action) }
                 .accessibilityAddTraits(.isButton)

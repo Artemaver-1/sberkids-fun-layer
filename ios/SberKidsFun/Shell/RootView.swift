@@ -39,7 +39,9 @@ final class AppRouter: ObservableObject {
 
     /// Идентификатор видимого экрана — его получает слой приколов.
     var screenId: String {
-        if let top = stack.last { return top.screenId }
+        if let top = stack.last {
+            return top == .profile && profileTab == 1 ? "settings" : top.screenId
+        }
         return tab == .paw ? AppTab.main.rawValue : tab.rawValue
     }
 

@@ -19,6 +19,7 @@ public struct FunTexts: Sendable, Equatable {
     public var toastTitle = "Пасхалка найдена! {n} из {total}"
     public var toastSubtitle = "Нажми, чтобы узнать секрет"
     public var toastRepeatTitle = "Секретов найдено: {n} из {total}"
+    public var tapProgress = "Осталось {left}…"
     public var sheetTitle = "Это пасхалка!"
     public var sheetIntro = "В СберKids спрятано {total} секретов. Исследуй приложение и найди их все!"
     public var nextHintTitle = "Где искать дальше?"
@@ -71,7 +72,8 @@ public enum TriggerKind: String, Sendable, CaseIterable {
     case shake          // тряска (акселерометр)
     case pullHold       // потянуть список вниз и задержать
     case palm           // накрыть экран ладонью
-    case faceDownFlip   // положить экраном вниз и перевернуть (запасной для palm)
+    case faceDownFlip   // положить экраном вниз и перевернуть
+    case tapSequence    // N быстрых нажатий по элементу (как «режим разработчика» на Android)
 }
 
 public struct Trigger: Sendable, Equatable {
@@ -80,6 +82,15 @@ public struct Trigger: Sendable, Equatable {
     public var pull = PullHoldParams()
     public var palm = PalmParams()
     public var flip = FlipParams()
+    public var tap = TapParams()
+}
+
+public struct TapParams: Sendable, Equatable {
+    /// Идентификатор элемента, о нажатиях на который сообщает приложение.
+    public var target = "settings.version"
+    public var taps = 7
+    public var maxGap: TimeInterval = 0.8
+    public init() {}
 }
 
 public struct ShakeParams: Sendable, Equatable {
@@ -150,6 +161,20 @@ public struct Effect: Sendable, Equatable {
     public var sound: String?
     public var interactSound: String?
     public var haptic: Haptic
+    public var reveal: RevealSpec?
+}
+
+public struct RevealSpec: Sendable, Equatable {
+    public enum Direction: String, Sendable { case left, right }
+    public var direction: Direction = .right
+    public var open: TimeInterval = 1.1
+    /// Когда интерфейс возвращается (от старта эффекта) — момент нажатия красной кнопки.
+    public var closeAt: TimeInterval = 5.7
+    public var close: TimeInterval = 0.28
+    /// Время на удар о край и затухание тряски.
+    public var settle: TimeInterval = 0.65
+    public init() {}
+    public var end: TimeInterval { closeAt + close + settle }
 }
 
 public enum Haptic: String, Sendable {

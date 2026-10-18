@@ -182,6 +182,34 @@ public final class PalmDetector {
     }
 }
 
+// MARK: - Серия нажатий
+
+/// N нажатий по одному элементу, между нажатиями не больше `maxGap`.
+/// Приложение сообщает о нажатии строкой-идентификатором элемента.
+public final class TapSequenceDetector {
+    public enum Output: Equatable { case none, progress(done: Int, left: Int), triggered }
+
+    public var params: TapParams
+    private var count = 0
+    private var last = -Double.infinity
+
+    public init(params: TapParams = TapParams()) { self.params = params }
+
+    public func reset() { count = 0; last = -.infinity }
+
+    public func feed(target: String, time: Double) -> Output {
+        guard target == params.target else { return .none }
+        if time - last > params.maxGap { count = 0 }
+        last = time
+        count += 1
+        if count >= params.taps {
+            reset()
+            return .triggered
+        }
+        return .progress(done: count, left: params.taps - count)
+    }
+}
+
 // MARK: - Экраном вниз и обратно (запасной триггер для «ладони»)
 
 /// Вход — z-компонента гравитации: −1 экран смотрит вверх, +1 — вниз

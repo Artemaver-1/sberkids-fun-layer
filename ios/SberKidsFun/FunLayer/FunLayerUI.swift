@@ -296,6 +296,8 @@ struct EggIcon: View {
                         .frame(width: w, height: g.size.height * 0.62)
                     }
                 )
+        case "egg.robots":
+            Image(systemName: "gearshape.2.fill").resizable().scaledToFit().foregroundColor(FunStyle.violet)
         case "egg.snow":
             Image(systemName: "snowflake").resizable().scaledToFit().foregroundColor(.white)
         default:
@@ -407,6 +409,21 @@ struct PictogramView: View {
                     .offset(x: 26 * (1 - cover), y: 4)
                     .opacity(0.3 + 0.7 * cover)
             }
+        case "gesture.tap7":
+            // палец стучит, счётчик бежит 1…7
+            let cycle = t.truncatingRemainder(dividingBy: 2.6)
+            let n = min(7, Int(cycle / 0.22) + 1)
+            let tapPhase = (cycle.truncatingRemainder(dividingBy: 0.22)) / 0.22
+            ZStack {
+                Image(systemName: "hand.point.up.left.fill")
+                    .font(.system(size: 24)).foregroundColor(Color(red: 0.95, green: 0.72, blue: 0.5))
+                    .offset(x: 6, y: 8 - (cycle < 1.54 ? 5 * sin(tapPhase * .pi) : 0))
+                Text("\(n)")
+                    .font(FunStyle.rounded(15, .heavy)).foregroundColor(.white)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(n == 7 ? Color.green : FunStyle.violet))
+                    .offset(x: -14, y: -16)
+            }
         case "gesture.faceDown":
             // телефон переворачивается экраном вниз, «темнеет» и возвращается обратно
             let cycle = t.truncatingRemainder(dividingBy: 2.8) / 2.8
@@ -437,6 +454,7 @@ struct PictogramView: View {
         case "tab.piggy": return "banknote.fill"
         case "tab.tasks": return "checkmark.circle.fill"
         case "screen.profile": return "person.crop.circle.fill"
+        case "screen.settings": return "gearshape.fill"
         default: return "questionmark"
         }
     }
@@ -452,6 +470,8 @@ struct PictogramView: View {
         case "gesture.pullHold": return "Потяни вниз и держи"
         case "gesture.palm": return "Накрой экран ладонью"
         case "gesture.faceDown": return "Положи телефон экраном вниз"
+        case "gesture.tap7": return "Нажми 7 раз"
+        case "screen.settings": return "Настройки"
         default: return ""
         }
     }

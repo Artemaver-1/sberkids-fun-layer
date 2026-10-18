@@ -21,6 +21,7 @@ public struct TextsDTO: Codable, Sendable {
     public var toastTitle: String?
     public var toastSubtitle: String?
     public var toastRepeatTitle: String?
+    public var tapProgress: String?
     public var sheetTitle: String?
     public var sheetIntro: String?
     public var nextHintTitle: String?
@@ -74,6 +75,10 @@ public struct TriggerDTO: Codable, Sendable {
     public var maxHoldMs: Int?
     // faceDownFlip
     public var downMs: Int?
+    // tapSequence
+    public var target: String?
+    public var taps: Int?
+    public var maxGapMs: Int?
 }
 
 public struct ScheduleDTO: Codable, Sendable {
@@ -101,6 +106,15 @@ public struct EffectDTO: Codable, Sendable {
     public var sound: String?
     public var interactSound: String?
     public var haptic: String?
+    public var reveal: RevealDTO?
+}
+
+/// «Интерфейс отъезжает и открывает сцену»: снимок экрана сдвигается вбок, затем возвращается.
+public struct RevealDTO: Codable, Sendable {
+    public var direction: String?
+    public var openMs: Int?
+    public var closeAtMs: Int?
+    public var closeMs: Int?
 }
 
 public struct DimDTO: Codable, Sendable {

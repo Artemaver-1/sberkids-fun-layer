@@ -2,21 +2,22 @@
   "schemaVersion": 1,
   "configId": "winter-2026",
   "enabled": true,
-  "announcedTotal": 5,
+  "announcedTotal": 4,
   "foundSound": "chime",
   "texts": {
     "toastTitle": "Пасхалка найдена! {n} из {total}",
     "toastSubtitle": "Нажми, чтобы узнать секрет",
     "sheetTitle": "Это пасхалка!",
-    "sheetIntro": "В СберKids спрятано {total} секретов. Исследуй приложение и найди их все!",
+    "sheetIntro": "Секретов в СберKids: {total}. Исследуй приложение и найди их все!",
     "nextHintTitle": "Где искать дальше?",
     "moreHintButton": "Ещё подсказка",
     "shareButton": "Похвастаться",
     "closeButton": "Понятно",
-    "shareText": "У меня {n} из {total} секретов СберKids! Сможешь найти все?",
+    "shareText": "Найдено секретов СберKids: {n} из {total}. Сможешь найти все?",
     "allFoundTitle": "Все секреты найдены!",
-    "allFoundText": "Ты настоящий исследователь. Скоро здесь спрячутся новые пасхалки.",
-    "comingSoonText": "Ещё {left} секрета уже прячутся в приложении. Загляни сюда позже!"
+    "allFoundText": "Ты настоящий исследователь СберKids. Роботы передают привет!",
+    "comingSoonText": "Ещё {left} секрета уже прячутся в приложении. Загляни сюда позже!",
+    "tapProgress": "Осталось {left}…"
   },
   "teaser": {
     "enabled": true,
@@ -187,6 +188,54 @@
           "gesture.faceDown"
         ]
       }
+    },
+    {
+      "id": "robots",
+      "order": 4,
+      "title": "Цех роботов",
+      "pictogram": "egg.robots",
+      "screen": "settings",
+      "trigger": {
+        "type": "tapSequence",
+        "target": "settings.version",
+        "taps": 7,
+        "maxGapMs": 800
+      },
+      "cooldownMs": 4000,
+      "variants": [
+        {
+          "id": "factory",
+          "weight": 1,
+          "effect": {
+            "durationMs": 6700,
+            "sound": "factory",
+            "interactSound": "slam",
+            "haptic": "medium",
+            "reveal": {
+              "direction": "right",
+              "openMs": 1100,
+              "closeAtMs": 5750,
+              "closeMs": 280
+            },
+            "layers": [
+              {
+                "type": "lottie",
+                "asset": "robots",
+                "speed": 1,
+                "placement": "fullscreen"
+              }
+            ]
+          }
+        }
+      ],
+      "hint": {
+        "riddle": "Внутри приложения кто-то работает! Найди номер версии в настройках и постучи по нему, как настоящий разработчик.",
+        "help": "Аватарка → вкладка «Настройки» → быстро нажми 7 раз на «Версия приложения» внизу.",
+        "pictograms": [
+          "screen.settings",
+          "gesture.tap7"
+        ]
+      }
     }
   ],
   "assets": {
@@ -244,6 +293,21 @@
       "url": "assets/bubbles.wav",
       "sha256": "2a56466c229cbc3f7685f4d1268ac50e30c5b8328a5c8fea94695f14487e0a51",
       "bytes": 66194
+    },
+    "robots": {
+      "url": "assets/robots.json",
+      "sha256": "86e988716c7b25312e3e7e52676c8122a7d74352d04801db7e5f16e72b6b6a85",
+      "bytes": 765168
+    },
+    "factory": {
+      "url": "assets/factory.wav",
+      "sha256": "cacfe39e1de3b755cda9eb306ecc0239e9fc718bf17c15111b75590ecc60c29e",
+      "bytes": 317564
+    },
+    "slam": {
+      "url": "assets/slam.wav",
+      "sha256": "cef33a8f94aa6641cad0056124a92127693978f207b2fa3cd963c1193e8d5a76",
+      "bytes": 57374
     }
   }
 }

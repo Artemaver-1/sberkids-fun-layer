@@ -36,6 +36,20 @@ struct OverlayRootView: View {
             if fun.teaser != nil {
                 TeaserView()
             }
+            if let hint = fun.tapHint {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "wrench.and.screwdriver.fill").foregroundColor(FunStyle.violet)
+                        Text(hint).font(FunStyle.rounded(15, .bold)).foregroundColor(FunStyle.ink)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Capsule().fill(Color.white).shadow(color: .black.opacity(0.15), radius: 10, y: 4))
+                    .padding(.bottom, fun.safeInsets.bottom + 40)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
             if let toast = fun.toast {
                 ToastView(model: toast)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -84,6 +98,7 @@ struct EffectView: View {
                 }
             }
             ForEach(Array(runtime.layers.enumerated()), id: \.offset) { _, layer in
+                // (сцена под интерфейсом рисуется первой, панель интерфейса — поверх)
                 if case .lottie(let spec, let url) = layer, let url {
                     LottieLayerView(url: url, speed: spec.speed,
                                     onStart: { [id = runtime.id] in fun.lottieStarted(id) },
@@ -91,6 +106,7 @@ struct EffectView: View {
                 }
             }
         }
+        .overlay(revealPanel)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .global)
@@ -99,6 +115,57 @@ struct EffectView: View {
                 }
         )
         .ignoresSafeArea()
+    }
+}
+
+extension EffectView {
+    /// Снимок интерфейса, который механически отъезжает и с ударом возвращается.
+    @ViewBuilder var revealPanel: some View {
+        if let reveal = runtime.reveal, let snapshot = runtime.revealSnapshot {
+            TimelineView(.animation) { timeline in
+                let _ = timeline.date
+                let o = runtime.revealOffset(at: runtime.elapsed, width: Double(runtime.size.width))
+                RevealPanel(image: snapshot, toRight: reveal.direction == .right)
+                    .offset(x: o.x, y: o.y)
+                    .rotationEffect(.degrees(o.rotation))
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Интерфейс как «стальная панель»: снимок экрана + металлический торец с болтами и тень на сцене.
+struct RevealPanel: View {
+    let image: UIImage
+    let toRight: Bool
+
+    var body: some View {
+        ZStack(alignment: toRight ? .leading : .trailing) {
+            Image(uiImage: image)
+                .resizable()
+                .shadow(color: .black.opacity(0.55), radius: 22, x: toRight ? -10 : 10)
+            edge
+                .frame(width: 14)
+                .offset(x: toRight ? -14 : 14)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var edge: some View {
+        ZStack {
+            LinearGradient(colors: [Color(white: 0.55), Color(white: 0.92), Color(white: 0.5)],
+                           startPoint: .leading, endPoint: .trailing)
+            VStack(spacing: 0) {
+                ForEach(0..<9, id: \.self) { _ in
+                    Spacer()
+                    Circle()
+                        .fill(RadialGradient(colors: [Color(white: 0.95), Color(white: 0.4)], center: .topLeading,
+                                             startRadius: 0, endRadius: 6))
+                        .frame(width: 6, height: 6)
+                }
+                Spacer()
+            }
+        }
     }
 }
 

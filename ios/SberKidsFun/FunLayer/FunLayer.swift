@@ -39,7 +39,7 @@ final class FunLayer: ObservableObject {
 
     /// Экраны приложения. Денежные помечены в ScreenPolicy.sensitive и закрыты для приколов в коде.
     static let screens: Set<String> = ["main", "piggy", "tasks", "content", "profile", "transfer", "top_up", "debug",
-                                       "history", "design", "content_detail", "tasks_detail", "piggy_detail"]
+                                       "history", "design", "content_detail", "tasks_detail", "piggy_detail", "settings"]
     let policy = ScreenPolicy(knownScreens: FunLayer.screens)
 
     @Published private(set) var config: FunConfig?
@@ -57,6 +57,8 @@ final class FunLayer: ObservableObject {
     @Published private(set) var isLoadingRemote = false
     @Published var calibration: (touches: Int, radius: Double) = (0, 0)
     @Published private(set) var progressVersion = 0
+    /// Подсказка во время серии тапов: «Осталось 3…»
+    @Published private(set) var tapHint: String?
 
     private(set) var engine: EggEngine?
     let loader: ConfigLoader
@@ -66,6 +68,10 @@ final class FunLayer: ObservableObject {
     private let palm = PalmGestureRecognizer()
     private let pull = PullHoldDetector()
     private var pullEnabled = false
+    private let tapSeq = TapSequenceDetector()
+    private var tapEnabled = false
+    private var tapHintTask: Task<Void, Never>?
+    private weak var appWindow: UIWindow?
     private var lastPullDistance = 0.0
     private var maxPullSeen = 0.0
     private var pullTicker: Task<Void, Never>?
@@ -88,6 +94,7 @@ final class FunLayer: ObservableObject {
 
     func install(on window: UIWindow) {
         guard overlay == nil, let scene = window.windowScene else { return }
+        appWindow = window
 
         window.addGestureRecognizer(palm)
         palm.isEnabled = false
@@ -263,6 +270,7 @@ final class FunLayer: ObservableObject {
             palmEggActive = false
             shakeEggActive = false
             pullEnabled = false
+            tapEnabled = false
             return
         }
         let t = engine.activeTriggers(on: currentScreen, now: Date())
@@ -273,6 +281,42 @@ final class FunLayer: ObservableObject {
         palm.isEnabled = palmEggActive || calibrating
         if let p = t[.pullHold] { pull.params = p.pull }
         pullEnabled = t[.pullHold] != nil
+        if let p = t[.tapSequence] { tapSeq.params = p.tap }
+        tapEnabled = t[.tapSequence] != nil
+    }
+
+    /// Приложение сообщает о нажатии на элемент (одна строка в обработчике нажатия).
+    func reportTap(_ target: String) {
+        guard tapEnabled, effect == nil, sheet == nil, let config else { return }
+        switch tapSeq.feed(target: target, time: CACurrentMediaTime()) {
+        case .progress(let done, let left):
+            Haptics.tick()
+            if done >= 3 {
+                tapHint = Template.render(config.texts.tapProgress, ["left": "\(left)"])
+                tapHintTask?.cancel()
+                tapHintTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 1_100_000_000)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { self?.tapHint = nil }
+                }
+            }
+        case .triggered:
+            tapHintTask?.cancel()
+            tapHint = nil
+            trigger(.tapSequence)
+        case .none:
+            break
+        }
+    }
+
+    /// Снимок интерфейса приложения — он «отъезжает», открывая сцену под собой.
+    private func snapshotApp() -> UIImage? {
+        guard let w = appWindow else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = w.screen.scale
+        return UIGraphicsImageRenderer(bounds: w.bounds, format: format).image { _ in
+            w.drawHierarchy(in: w.bounds, afterScreenUpdates: false)
+        }
     }
 
     /// Системный жест «встряхнуть» (UIKit). Дублирует CoreMotion: работает и в симуляторе
@@ -401,12 +445,39 @@ final class FunLayer: ObservableObject {
         teaser = nil
         teaserTask?.cancel()
         let runtime = EffectRuntime(decision: d, size: overlaySize, config: config, assets: loader.assets)
+        if runtime.reveal != nil { runtime.revealSnapshot = snapshotApp() }
         log("runtime ready")
         withAnimation(.easeOut(duration: 0.2)) { effect = runtime }
         updateSensors()
         if d.trigger == .palm { palm.isEnabled = true }
         Haptics.play(d.variant.effect.haptic)
         endTask?.cancel()
+        if let reveal = runtime.reveal {
+            // Сценарий сдвига: вибрации в такт механике, удар при возврате, конец — по времени сцены
+            endTask = Task { [weak self] in
+                var fired = Set<Int>()
+                while !Task.isCancelled, let self, let effect = self.effect, effect.id == runtime.id {
+                    let t = runtime.elapsed
+                    func once(_ id: Int, _ at: Double, _ action: () -> Void) {
+                        if t >= at, !fired.contains(id) { fired.insert(id); action() }
+                    }
+                    once(1, 0.16) { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                    once(2, 0.32) { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    once(3, reveal.open) { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
+                    once(4, runtime.revealCloseAt + reveal.close) {
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1)
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                    if t >= runtime.revealEnd {
+                        self.showToast(for: d)
+                        self.finishEffect()
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: 16_000_000)
+                }
+            }
+            return
+        }
         if runtime.hasLottie {
             // Персонаж: звук стартует вместе с анимацией (lottieStarted), конец — по её завершению
             // (lottieFinished). Таймер — только страховка, если анимация не сообщит о конце.
@@ -438,7 +509,7 @@ final class FunLayer: ObservableObject {
     }
 
     func lottieFinished(_ id: UUID) {
-        guard let effect, effect.id == id else { return }
+        guard let effect, effect.id == id, effect.reveal == nil else { return }
         log("lottie finished")
         endTask?.cancel()
         showToast(for: effect.decision)
@@ -462,6 +533,17 @@ final class FunLayer: ObservableObject {
 
     func tapEffect(at point: CGPoint) {
         guard let effect, let config else { return }
+        if let reveal = effect.reveal {
+            let t = effect.elapsed
+            if t > reveal.open * 0.6, t < effect.revealCloseAt - 0.05 {
+                effect.revealCloseAt = t
+                sounds.stopAll()
+                if let s = reveal.closeAt > 0 ? effect.decision.variant.effect.interactSound : nil {
+                    sounds.play(loader.assets.localURL(forKey: s, in: config))
+                }
+            }
+            return
+        }
         if effect.tap(at: point) {
             Haptics.tick()
             if let s = effect.decision.variant.effect.interactSound {
@@ -580,6 +662,7 @@ final class FunLayer: ObservableObject {
     /// Всё остальное проходит насквозь в приложение.
     func wantsTouch(at point: CGPoint) -> Bool {
         if sheet != nil { return true }
+        if effect?.reveal != nil { return true }   // сцена на весь экран: тап закрывает её досрочно
         if toast != nil, toastFrame.insetBy(dx: -6, dy: -6).contains(point) { return true }
         if let p = teaserPosition(at: CACurrentMediaTime()), hypot(p.x - point.x, p.y - point.y) < 34 { return true }
         if let effect, effect.hit(at: point) { return true }

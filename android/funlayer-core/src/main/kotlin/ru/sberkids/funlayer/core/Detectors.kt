@@ -17,6 +17,29 @@ data class PalmParams(
     val maxHold: Double = 6.0,
 )
 data class FlipParams(val down: Double = 0.8, val maxDown: Double = 6.0)
+data class TapParams(val target: String = "settings.version", val taps: Int = 7, val maxGap: Double = 0.8)
+
+/** N нажатий по элементу подряд (как «режим разработчика» Android). */
+class TapSequenceDetector(var params: TapParams = TapParams()) {
+    sealed interface Output {
+        data object None : Output
+        data class Progress(val done: Int, val left: Int) : Output
+        data object Triggered : Output
+    }
+    private var count = 0
+    private var last = Double.NEGATIVE_INFINITY
+
+    fun reset() { count = 0; last = Double.NEGATIVE_INFINITY }
+
+    fun feed(target: String, time: Double): Output {
+        if (target != params.target) return Output.None
+        if (time - last > params.maxGap) count = 0
+        last = time
+        count++
+        if (count >= params.taps) { reset(); return Output.Triggered }
+        return Output.Progress(count, params.taps - count)
+    }
+}
 
 /** Вход — линейное ускорение без гравитации в g (Sensor.TYPE_LINEAR_ACCELERATION / 9.81). */
 class ShakeDetector(var params: ShakeParams = ShakeParams()) {

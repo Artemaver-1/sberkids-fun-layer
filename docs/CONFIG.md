@@ -47,6 +47,7 @@
 | `pullHold` | `distance` (pt, 40–250), `holdMs` | 90 pt, 1000 мс |
 | `palm` | `minTouches` (2–10), `minRadius` (pt), `holdMs`, `maxMovement`, `maxHoldMs` | 3, 30 pt, 1200 мс, 70 pt, 6000 мс |
 | `faceDownFlip` | `downMs` | 800 мс |
+| `tapSequence` | `target` (элемент, о нажатиях на который сообщает приложение), `taps` (2–15), `maxGapMs` | `settings.version`, 7, 800 мс |
 
 ### Эффект
 
@@ -57,7 +58,13 @@
   "sound": "jungle",             // при старте
   "interactSound": "pop",        // при касании пузыря/призрака
   "haptic": "light",             // none | light | medium | success
-  "layers": [ … ]                // рисуются по порядку
+  "layers": [ … ],               // рисуются по порядку
+  "reveal": {                    // необязательно: интерфейс отъезжает и открывает сцену
+    "direction": "right",        // right | left
+    "openMs": 1100,              // механическое открытие (рывок, фиксатор, сервопривод)
+    "closeAtMs": 5750,           // когда возвращается (момент нажатия кнопки в сцене)
+    "closeMs": 280               // как быстро влетает обратно; затем удар о край и тряска
+  }
 }
 ```
 

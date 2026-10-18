@@ -105,6 +105,7 @@ public enum ConfigValidator {
             }
             set(\.toastTitle, t.toastTitle); set(\.toastSubtitle, t.toastSubtitle)
             set(\.toastRepeatTitle, t.toastRepeatTitle)
+            set(\.tapProgress, t.tapProgress)
             set(\.sheetTitle, t.sheetTitle); set(\.sheetIntro, t.sheetIntro)
             set(\.nextHintTitle, t.nextHintTitle); set(\.moreHintButton, t.moreHintButton)
             set(\.shareButton, t.shareButton); set(\.closeButton, t.closeButton)
@@ -206,6 +207,9 @@ public enum ConfigValidator {
         if let v = t.maxMovement { trig.palm.maxMovement = clamp(v, 10...300) }
         if let v = t.maxHoldMs { trig.palm.maxHold = clamp(Double(v) / 1000, 2...20) }
         if let v = t.downMs { trig.flip.down = clamp(Double(v) / 1000, 0.3...5) }
+        if let v = t.target, !v.isEmpty { trig.tap.target = v }
+        if let v = t.taps { trig.tap.taps = max(2, min(v, 15)) }
+        if let v = t.maxGapMs { trig.tap.maxGap = clamp(Double(v) / 1000, 0.2...2) }
         return trig
     }
 
@@ -281,8 +285,19 @@ public enum ConfigValidator {
             layers: layers,
             sound: e.sound,
             interactSound: e.interactSound,
-            haptic: Haptic(rawValue: e.haptic ?? "light") ?? .light
+            haptic: Haptic(rawValue: e.haptic ?? "light") ?? .light,
+            reveal: makeReveal(e.reveal)
         )
+    }
+
+    static func makeReveal(_ r: RevealDTO?) -> RevealSpec? {
+        guard let r else { return nil }
+        var s = RevealSpec()
+        if let v = r.direction, let d = RevealSpec.Direction(rawValue: v) { s.direction = d }
+        if let v = r.openMs { s.open = clamp(Double(v) / 1000, 0.3...3) }
+        if let v = r.closeAtMs { s.closeAt = clamp(Double(v) / 1000, s.open + 0.5...9) }
+        if let v = r.closeMs { s.close = clamp(Double(v) / 1000, 0.1...1.5) }
+        return s
     }
 
     static func clamp(_ v: Double, _ r: ClosedRange<Double>) -> Double {
